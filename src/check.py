@@ -7,9 +7,13 @@ import json
 import re
 from pathlib import Path
 
-html = (Path(__file__).parent.parent / "public" / "index.html").read_text(encoding="utf-8")
-seed = re.search(r'<script id="seed"[^>]*>(.*?)</script>', html, re.S)[1]
-rows = json.loads(seed.replace("\\u003c", "<"))["rows"]
+HERE = Path(__file__).parent
+seed = (HERE.parent / "netlify" / "functions" / "seed.mjs").read_text(encoding="utf-8")
+rows = json.loads(seed[seed.index("export default") + 14:].rstrip().rstrip(";"))
+
+# El HTML se publica sin datos adentro: sin la clave no se ve el catálogo.
+html = (HERE.parent / "public" / "index.html").read_text(encoding="utf-8")
+assert not re.search(r"MLA\d{6}", html), "el HTML quedó con datos adentro"
 
 by_sku = collections.defaultdict(list)
 for r in rows:

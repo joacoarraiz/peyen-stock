@@ -1,17 +1,12 @@
 import { getStore } from "@netlify/blobs";
+import SEED from "./seed.mjs";
 
-// Shared storage for the stock sheet. Netlify Blobs needs no setup: it is part of
-// the site. GET returns whatever was saved last, PUT overwrites it.
+// Estado compartido de la planilla. Netlify Blobs no se configura: es parte del sitio.
+// Los datos viven acá, no en el HTML, así que sin la clave no se ven.
 const KEY = "stock";
 
-// Optional shared password. Set PEYEN_PASS in the Netlify site settings to lock
-// the sheet; leave it unset and the site works without asking for anything.
-function denied(req) {
-  const pass = process.env.PEYEN_PASS;
-  if (!pass) return null;
-  if (req.headers.get("x-peyen-pass") === pass) return null;
-  return json({ error: "clave incorrecta" }, 401);
-}
+// Cambiar la clave: variable de entorno PEYEN_PASS en Netlify. Sin variable, esta.
+const PASS = process.env.PEYEN_PASS || "PeyenMI";
 
 function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
@@ -21,14 +16,17 @@ function json(body, status = 200) {
 }
 
 export default async (req) => {
-  const blocked = denied(req);
-  if (blocked) return blocked;
+  if (req.headers.get("x-peyen-pass") !== PASS) {
+    return json({ error: "clave incorrecta" }, 401);
+  }
 
   const store = getStore("peyen-stock");
 
   if (req.method === "GET") {
     const saved = await store.get(KEY, { type: "json" });
-    return json(saved || { rows: null, savedAt: null });
+    // La primera vez no hay nada guardado: se arranca con los datos del último build.
+    if (!saved || !saved.rows) return json({ rows: SEED, sku: {}, savedAt: null });
+    return json(saved);
   }
 
   if (req.method === "PUT") {
@@ -42,15 +40,15 @@ export default async (req) => {
       return json({ error: "faltan las filas" }, 400);
     }
 
-    // Two people can have the sheet open. Whoever saves second must know that the
-    // version they loaded is no longer the latest, instead of silently erasing it.
+    // Dos personas pueden tener la planilla abierta. Quien guarda segundo tiene que
+    // enterarse de que su versión ya no es la última, en vez de borrarla en silencio.
     const current = await store.get(KEY, { type: "json" });
     if (current && current.savedAt && body.base !== current.savedAt) {
       return json({ error: "conflicto", savedAt: current.savedAt }, 409);
     }
 
     const savedAt = new Date().toISOString();
-    await store.setJSON(KEY, { rows: body.rows, savedAt, editor: body.editor || "" });
+    await store.setJSON(KEY, { rows: body.rows, sku: body.sku || {}, savedAt });
     return json({ savedAt });
   }
 

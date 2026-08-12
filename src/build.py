@@ -74,17 +74,24 @@ for r in rows:
     r["cuenta"] = not (r["link"] and key in seen)
     seen.add(key)
 
-data = json.dumps({"savedAt": None, "rows": rows},
-                  ensure_ascii=False).replace("<", "\\u003c")
+# Los datos NO viajan dentro del HTML: van al bundle de la función, que exige la clave.
+# Así el catálogo del cliente no queda a la vista de cualquiera que abra la URL.
+SEED_JS = HERE.parent / "netlify" / "functions" / "seed.mjs"
+SEED_JS.write_text(
+    "// Generado por src/build.py — datos iniciales de la planilla.\n"
+    "export default " + json.dumps(rows, ensure_ascii=False, indent=0) + ";\n",
+    encoding="utf-8")
+
 logo = "data:image/png;base64," + base64.b64encode(LOGO.read_bytes()).decode()
 fecha = re.search(r"(\d{4})_(\d{2})_(\d{2})-(\d{2})_(\d{2})", XLSX.name)
 fecha = f"{fecha[3]}/{fecha[2]}/{fecha[1]} {fecha[4]}:{fecha[5]} hs" if fecha else XLSX.name
 
 out = (HERE / "template.html").read_text(encoding="utf-8")
-out = out.replace("__DATA__", data).replace("__LOGO__", logo).replace("__FECHA__", fecha)
+out = out.replace("__LOGO__", logo)
 OUT.parent.mkdir(exist_ok=True)
 OUT.write_text(out, encoding="utf-8")
 
 skus = {r["sku"] for r in rows}
 print(f"{len(rows)} publicaciones · {len(skus)} SKU · {fecha}")
-print("->", OUT)
+print("->", OUT, "(sin datos adentro)")
+print("->", SEED_JS)

@@ -1,45 +1,70 @@
 # Peyen · Control de stock por SKU
 
-Planilla web para ver y editar el stock de Peyen en Mercado Libre: cada SKU con todas sus
-publicaciones (MLA), título, estado y stock, y el total real del SKU calculado arriba.
+Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Dos vistas:
 
-**El repositorio tiene que ser privado.** `public/index.html` lleva adentro el catálogo completo
-del cliente: 492 SKU con títulos, precios de referencia y stock.
+- **Por SKU** — se carga el stock físico de cada SKU y se reparte solo entre sus publicaciones.
+- **Por publicación** — cada MLA con su título, estado y stock, agrupado por SKU.
+
+Los cambios se guardan en el servidor: los ve cualquiera que entre con la clave.
+
+**El repositorio tiene que ser privado.** `netlify/functions/seed.mjs` lleva el catálogo completo
+del cliente. El HTML publicado no lleva datos adentro — se piden al servidor después del login.
 
 ---
 
-## Cómo se calcula el stock del SKU
+## Cómo se reparte el stock
 
-Sumar el stock de todos los MLA da un número inflado. Sobre este catálogo, sumar todo da
-**8.926 unidades** y el número real es **8.019**: hay **907 unidades fantasma**.
+Peyen tiene N unidades de un SKU y lo publica en varias MLA. Poner N en cada publicación es
+prometer stock que no existe, así que **el stock se divide** entre las publicaciones que usan
+ese SKU:
 
-Pasa porque el mismo SKU está publicado más de una vez. Mercado Libre agrupa algunas de esas
-publicaciones (comparten el `FAMILY_ID` del export) y les sincroniza el stock: son la misma
-mercadería mostrada dos veces. Esas vienen con la casilla **Suma** destildada y el cartel
-`COMPARTE STOCK`, y si se edita el stock en una se actualiza en las demás.
+```
+Stock del SKU ÷ publicaciones que lo usan = lo que recibe cada una
+```
 
-El agrupador de ML resuelve 45 casos, pero no todos. Quedan **14 SKU** donde el mismo stock
-aparece en dos grupos distintos que ML no relacionó — por ejemplo `K-7806`, con 4 publicaciones
-activas de 5 unidades cada una: pueden ser 20 en el galpón o 5 publicadas cuatro veces. El dato
-no alcanza para decidirlo. Esos SKU van marcados **REVISAR** (hay un filtro para verlos solos) y
-los resuelve quien conoce el depósito destildando la casilla **Suma**.
+Reglas:
 
-Reglas del total, en una línea: suma las publicaciones **activas** con **Suma** tildada.
+- Las publicaciones que **Mercado Libre agrupa** (mismo `FAMILY_ID`) cuentan como **una sola**:
+  comparten la misma mercadería y ML les sincroniza el número.
+- Las publicaciones **inactivas** no reciben stock.
+- Un **combo** consume una unidad de cada SKU que lo compone, así que se lleva **el mínimo**
+  entre lo que le tocó de cada parte. **Si una parte queda en 0, el combo queda en 0.**
+- La división es entera. Lo que no llega a repartirse queda como **«sobran N»** en la vista
+  por SKU — es stock declarado que ninguna publicación está mostrando.
 
-## Dónde se guardan los cambios
+Ejemplo real del catálogo: `68501/A` con 3 unidades, usado por 3 publicaciones (dos propias y
+un combo) → 1 a cada una. Si `TS-30023`, la otra parte del combo, no alcanza para dar 1 por
+publicación, el combo queda en 0 y sobran 2 unidades de `68501/A` reservadas sin poder venderse.
 
-| Dónde está abierta | Qué dice el cartel | Dónde quedan los cambios |
-|---|---|---|
-| Publicada en Netlify | Guardado para todos | En el servidor: los ve cualquiera que la abra |
-| Archivo suelto o portal | Guardado en este navegador | Solo en esa computadora |
+### Combos que no se pueden calcular
 
-Publicada en Netlify, la planilla guarda contra `/api/stock` (Netlify Blobs) y **sondea el
-servidor cada 30 segundos**: si la otra persona guardó, los números se actualizan solos y avisa
-con un cartel. Si dos personas editan a la vez, quien guarda segundo recibe la pregunta de si
-pisa la versión del otro o descarta lo suyo — nunca se borra trabajo en silencio.
+De los 104 SKU combo, **solo 53 tienen todas sus partes como SKU propio**. Los otros 51
+(`BAR 24786 + FRI 485`) referencian códigos que no existen sueltos en el catálogo, así que no hay
+de dónde sacarles el stock: se tratan como un SKU normal y se cargan a mano.
 
-El botón **Descargar copia** genera un HTML con los datos adentro. Sirve como respaldo y como
-forma de mover los datos cuando no hay servidor.
+### Stock fantasma
+
+Sumar el stock de todas las publicaciones da **8.926 unidades**; el real es **8.019**. Los
+**907 de diferencia** son publicaciones agrupadas contadas dos veces. En la vista por publicación,
+la casilla **Suma** controla cuáles entran en el total, y **14 SKU** quedan marcados `REVISAR`
+porque tienen dos publicaciones distintas con el mismo stock — puede ser la misma mercadería
+cargada dos veces, y eso lo confirma quien conoce el depósito.
+
+## Excel
+
+- **Descargar Excel** baja la tabla de publicaciones (SKU, MLA, título, estado, stock, suma).
+- **Cargar Excel** acepta esa misma planilla editada, o un **export nuevo de Mercado Libre**
+  (Publicaciones → Modificar masivamente). Reconoce cuál es por los encabezados y muestra un
+  resumen de qué cambia antes de aplicar nada.
+
+El motor de Excel no usa librerías: escribe el ZIP a mano y lee con `DecompressionStream`.
+Por eso **hay que abrirla con Chrome o Edge**.
+
+## Guardado
+
+Guarda contra `/api/stock` (Netlify Blobs) y **sondea cada 30 segundos**: si la otra persona
+guardó, los números se actualizan solos. Si dos personas editan a la vez, quien guarda segundo
+elige si pisa la versión del otro o descarta la suya — nunca se borra trabajo en silencio.
 
 ---
 
@@ -48,51 +73,43 @@ forma de mover los datos cuando no hay servidor.
 ### 1. GitHub (privado)
 
 ```bash
-git remote add origin git@github.com:USUARIO/peyen-stock.git
-git push -u origin main
+git push
 ```
 
 ### 2. Netlify
 
-1. En Netlify: **Add new site → Import an existing project → GitHub** y elegir el repo.
-2. Netlify lee `netlify.toml`: publica `public/` y toma las funciones de `netlify/functions/`.
-   No hay build que configurar.
-3. Deploy. La planilla queda en `https://<sitio>.netlify.app`.
+**Add new site → Import an existing project → GitHub** y elegir el repo. Netlify lee
+`netlify.toml`: publica `public/` y toma las funciones de `netlify/functions/`. No hay build
+que configurar.
 
-El almacenamiento (Netlify Blobs) no se configura: es parte del sitio.
+### 3. Clave
 
-### 3. Clave de acceso (opcional)
-
-Sin clave, cualquiera con el link puede editar. Para cerrarlo:
-
-**Site configuration → Environment variables →** `PEYEN_PASS` = la clave que quieras.
-
-La planilla la pide una vez por navegador y la recuerda. Cambiar la variable saca a todos.
+La clave por defecto es **`PeyenMI`**, escrita en `netlify/functions/stock.mjs`. Para cambiarla
+sin tocar código: **Site configuration → Environment variables →** `PEYEN_PASS`, y después
+**Deploys → Trigger deploy**. La variable le gana al valor del código.
 
 ---
 
-## Actualizar los datos el mes que viene
+## Actualizar los datos
 
-1. Bajar de Mercado Libre: **Publicaciones → Modificar masivamente** (el .xlsx con la hoja
-   `Publicaciones`, que trae `FAMILY_ID` y `STATUS`).
-2. Regenerar y verificar:
+Lo normal es hacerlo desde la planilla misma: **Cargar Excel** con el export nuevo de Mercado
+Libre. No hace falta tocar el repo.
+
+Para regenerar los datos iniciales (los que ve alguien que entra por primera vez, antes del
+primer guardado):
 
 ```bash
-python src/build.py "C:/ruta/al/Publicaciones-2026_09_10-11_27.xlsx" && python src/check.py
+python src/build.py "C:/ruta/Publicaciones-2026_09_10-11_27.xlsx" && python src/check.py
 ```
-
-3. Commit y push: Netlify redeploya solo.
-
-**Ojo:** regenerar reemplaza los datos que trae el archivo, pero **no** pisa lo que está guardado
-en el servidor — la planilla sigue mostrando lo guardado. Para arrancar de cero con los datos
-nuevos, el botón **Restaurar** y después **Guardar**.
 
 ## Archivos
 
 | Archivo | Qué es |
 |---|---|
-| `public/index.html` | La planilla generada. Es lo que se publica. |
-| `src/template.html` | El HTML fuente, con `__DATA__`, `__LOGO__` y `__FECHA__` sin reemplazar. |
-| `src/build.py` | Lee el export de ML y escribe `public/index.html`. |
-| `src/check.py` | Verifica la matemática del stock. Falla ruidosamente si algo se rompe. |
-| `netlify/functions/stock.mjs` | GET/PUT del estado compartido sobre Netlify Blobs. |
+| `public/index.html` | La planilla. Se publica sin datos adentro. |
+| `netlify/functions/stock.mjs` | Clave, GET/PUT del estado compartido, detección de conflicto. |
+| `netlify/functions/seed.mjs` | Datos iniciales. Lo genera `build.py`. |
+| `src/template.html` | El HTML fuente, con `__LOGO__` sin reemplazar. |
+| `src/build.py` | Lee el export de ML → `public/index.html` + `seed.mjs`. |
+| `src/check.py` | Verifica la matemática del stock y que el HTML no lleve datos. |
+| `src/check_excel.mjs` | Corre el motor de Excel del HTML en Node, sin navegador. |
