@@ -1,0 +1,688 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Peyen · Control de stock por SKU</title>
+<link rel="icon" href="__LOGO__">
+<style>
+  :root{
+    --navy:#001F3C; --navy-soft:#0d3562; --red:#D52319; --red-soft:#fdecea;
+    --ink:#12263a; --muted:#68788c; --line:#e2e8f0; --bg:#f4f6f9;
+    --ok:#0f7b4f; --ok-soft:#e6f5ee; --warn:#8a5a00; --warn-soft:#fff5e0;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:var(--bg);color:var(--ink);
+       font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,Arial,sans-serif}
+  button{font:inherit;cursor:pointer}
+  input,select{font:inherit;color:inherit}
+
+  /* ---------- header ---------- */
+  header{background:var(--navy);color:#fff;padding:14px 22px;display:flex;
+         align-items:center;gap:16px;flex-wrap:wrap;position:sticky;top:0;z-index:30}
+  header img{height:42px;background:#fff;border-radius:8px;padding:4px 8px}
+  .htitle{font-size:18px;font-weight:700;letter-spacing:.2px}
+  .hsub{font-size:12.5px;color:#a9bdd4}
+  .hspace{flex:1}
+  .btn{border:0;border-radius:8px;padding:9px 15px;font-weight:600;font-size:14px}
+  .btn-primary{background:var(--red);color:#fff}
+  .btn-primary:hover{background:#b81d14}
+  .btn-ghost{background:rgba(255,255,255,.12);color:#fff}
+  .btn-ghost:hover{background:rgba(255,255,255,.22)}
+  .btn-line{background:#fff;color:var(--navy);border:1px solid var(--line)}
+  .btn-line:hover{background:#eef2f7}
+  .btn-sm{padding:5px 10px;font-size:13px;border-radius:6px}
+  #saveState{font-size:12.5px;color:#a9bdd4;min-width:150px;text-align:right}
+  #saveState.dirty{color:#ffd9a0}
+
+  /* ---------- kpis ---------- */
+  .kpis{display:flex;gap:12px;padding:16px 22px 0;flex-wrap:wrap}
+  .kpi{background:#fff;border:1px solid var(--line);border-radius:10px;
+       padding:10px 16px;min-width:130px;flex:1}
+  .kpi b{display:block;font-size:22px;color:var(--navy);line-height:1.2}
+  .kpi span{font-size:12px;color:var(--muted);text-transform:uppercase;letter-spacing:.4px}
+  .kpi.alert b{color:var(--red)}
+
+  /* ---------- toolbar ---------- */
+  .toolbar{display:flex;gap:10px;align-items:center;padding:16px 22px;flex-wrap:wrap}
+  .toolbar input[type=search]{flex:1;min-width:240px;padding:9px 12px;border:1px solid var(--line);
+       border-radius:8px;background:#fff}
+  .toolbar select{padding:9px 10px;border:1px solid var(--line);border-radius:8px;background:#fff}
+  .chk{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--muted);
+       background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
+  .chk input{margin:0}
+
+  .notice{margin:0 22px 14px;background:#fff;border:1px solid var(--line);
+          border-left:4px solid var(--red);border-radius:8px;padding:11px 15px;font-size:13.5px;color:#3d4f63}
+  .notice b{color:var(--navy)}
+  #alert{margin:0 22px 14px;background:var(--warn-soft);border:1px solid #f0d59a;
+         border-radius:8px;padding:11px 15px;font-size:13.5px;color:var(--warn)}
+  #alert[hidden]{display:none}
+
+  /* ---------- tabla ---------- */
+  .wrap{padding:0 22px 60px}
+  #app{overflow-x:auto}
+  table{width:100%;min-width:820px;border-collapse:collapse;background:#fff;border:1px solid var(--line);
+        border-radius:10px;overflow:hidden}
+  thead th{background:#eef2f7;color:var(--navy);font-size:11.5px;text-transform:uppercase;
+           letter-spacing:.6px;text-align:left;padding:10px 12px;border-bottom:1px solid var(--line);
+           position:sticky;top:var(--th-top,72px);z-index:10}
+  td{padding:7px 12px;border-bottom:1px solid #eef1f5;vertical-align:middle}
+  tbody.grp{border-top:2px solid var(--navy)}
+  tr.sku{background:#f7f9fc;cursor:pointer}
+  tr.sku:hover{background:#eef3f9}
+  tr.sku td{padding:11px 12px;font-weight:600}
+  .caret{display:inline-block;width:14px;color:var(--muted);font-size:11px}
+  .skuname{font-size:16px;color:var(--navy);letter-spacing:.2px}
+  .total{font-size:21px;font-weight:700;color:var(--navy);text-align:right;white-space:nowrap}
+  .total small{display:block;font-size:11px;font-weight:600;color:var(--warn)}
+  .total.zero{color:var(--red)}
+  tr.pub td:first-child{padding-left:30px}
+  tr.pub.off{background:#fbfcfd;color:var(--muted)}
+  tr.pub.off .t-in,tr.pub.off .mla{color:var(--muted)}
+
+  .mla{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:13px;width:150px;
+       border:1px solid transparent;background:transparent;border-radius:6px;padding:5px 6px}
+  .t-in{width:100%;border:1px solid transparent;background:transparent;border-radius:6px;padding:5px 6px}
+  .mla:hover,.t-in:hover,.stk:hover{border-color:var(--line)}
+  .mla:focus,.t-in:focus,.stk:focus{border-color:var(--navy);background:#fff;outline:none}
+  .stk{width:78px;text-align:right;border:1px solid var(--line);border-radius:6px;padding:6px 8px;
+       font-weight:600;background:#fff}
+  .est{border:1px solid var(--line);border-radius:6px;padding:5px 8px;background:#fff;font-size:13.5px}
+  .est.on{color:var(--ok);background:var(--ok-soft);border-color:#bfe3d1}
+  .est.off{color:var(--muted);background:#f1f4f8}
+
+  .sum{width:18px;height:18px;accent-color:var(--navy);cursor:pointer}
+  .sumcell{text-align:center}
+  .chips{margin-top:2px;padding-left:6px}
+  .chip{display:inline-block;font-size:11px;font-weight:700;letter-spacing:.3px;padding:2px 7px;
+        border-radius:20px;vertical-align:middle}
+  .c-link{background:#e8eefb;color:#1e3f80}
+  .c-warn{background:var(--warn-soft);color:var(--warn)}
+  .c-combo{background:#f2ecfb;color:#5b3b96}
+  .c-var{background:#eaf6ee;color:#1c6b3c}
+  .c-zero{background:var(--red-soft);color:var(--red)}
+  .c-full{background:var(--warn-soft);color:var(--warn)}
+  .c-count{background:#eef2f7;color:var(--muted)}
+  .del{background:transparent;border:0;color:#b9c4d1;font-size:16px;line-height:1;padding:4px 6px;border-radius:6px}
+  .del:hover{color:var(--red);background:var(--red-soft)}
+  .hint{font-size:11.5px;color:var(--muted)}
+  .empty{padding:40px;text-align:center;color:var(--muted)}
+  .foot{display:flex;gap:10px;align-items:center;padding:16px 0}
+
+  /* ---------- toast ---------- */
+  #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);
+         background:var(--navy);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;
+         box-shadow:0 8px 24px rgba(0,31,60,.28);opacity:0;transition:.25s;z-index:60;pointer-events:none}
+  #toast.show{transform:translateX(-50%) translateY(0);opacity:1}
+  @media print{header{position:static}.toolbar,.del,.foot,#toast{display:none}}
+</style>
+</head>
+<body>
+
+<header>
+  <img src="__LOGO__" alt="Peyen">
+  <div>
+    <div class="htitle">Control de stock por SKU</div>
+    <div class="hsub">Publicaciones de Mercado Libre · datos al __FECHA__</div>
+  </div>
+  <div class="hspace"></div>
+  <span id="saveState">—</span>
+  <button class="btn btn-primary" id="btnSave">Guardar cambios</button>
+  <button class="btn btn-ghost" id="btnDownload">Descargar copia</button>
+  <button class="btn btn-ghost" id="btnReset" title="Volver a los datos originales del archivo">Restaurar</button>
+</header>
+
+<div class="kpis">
+  <div class="kpi"><b id="kSku">0</b><span>SKU</span></div>
+  <div class="kpi"><b id="kPub">0</b><span>Publicaciones</span></div>
+  <div class="kpi"><b id="kAct">0</b><span>Activas</span></div>
+  <div class="kpi"><b id="kIna">0</b><span>Inactivas</span></div>
+  <div class="kpi alert"><b id="kZero">0</b><span>Activas sin stock</span></div>
+  <div class="kpi alert"><b id="kRev">0</b><span>SKU a revisar</span></div>
+  <div class="kpi"><b id="kUni">0</b><span>Unidades totales</span></div>
+</div>
+
+<div class="toolbar">
+  <input type="search" id="q" placeholder="Buscar por SKU, MLA o título…">
+  <select id="fEstado">
+    <option value="">Todos los estados</option>
+    <option value="Activa">Solo activas</option>
+    <option value="Inactiva">Solo inactivas</option>
+  </select>
+  <label class="chk"><input type="checkbox" id="fZero"> Sin stock</label>
+  <label class="chk"><input type="checkbox" id="fMulti"> SKU con varias publicaciones</label>
+  <label class="chk"><input type="checkbox" id="fRev"> Solo los que dicen REVISAR</label>
+  <button class="btn btn-line" id="btnToggle">Contraer todo</button>
+  <button class="btn btn-line" id="btnAddSku">+ Agregar SKU</button>
+</div>
+
+<div class="notice">
+  <b>Cómo se calcula el stock del SKU:</b> suma solo las publicaciones <b>activas</b> que tienen
+  tildada la casilla <b>Suma</b>. Las que Mercado Libre agrupa comparten la misma mercadería
+  (<span class="chip c-link">COMPARTE STOCK</span>): vienen destildadas para no contarlas dos veces, y si
+  cambiás el stock en una se actualiza en las demás. Si ves una publicación repetida que igual está
+  sumando, destildala y el total se corrige solo.
+  <br><b>Revisá primero los SKU marcados <span class="chip c-warn">REVISAR</span></b>: tienen dos publicaciones
+  distintas con el mismo número de stock, así que puede ser la misma mercadería contada dos veces.
+  <br><b>Guardado:</b> el cartel de arriba a la derecha te dice dónde quedan los cambios. Si dice
+  <b>«Guardado para todos»</b>, están en el servidor y los ve cualquiera que abra la planilla. Si dice
+  <b>«Guardado en este navegador»</b>, quedaron solo en esta computadora: usá <b>Descargar copia</b>
+  y pasanos el archivo.
+</div>
+
+<div id="alert" hidden></div>
+
+<div class="wrap">
+  <div id="app"></div>
+  <div class="foot">
+    <button class="btn btn-line" id="btnAddSku2">+ Agregar SKU</button>
+    <span class="hint" id="shown"></span>
+  </div>
+</div>
+
+<div id="toast"></div>
+
+<script id="seed" type="application/json">__DATA__</script>
+<script>
+(function(){
+  "use strict";
+  var KEY = "peyen-stock-v1";
+  var PASS_KEY = "peyen-pass";
+  var API = "/api/stock";
+  var SEED = JSON.parse(document.getElementById("seed").textContent);
+  var state = null, collapsed = {}, allCollapsed = false, dirty = false;
+  // "servidor" = la planilla está publicada y todos ven lo mismo.
+  // "local"    = archivo suelto o portal: los cambios quedan en este navegador.
+  var modo = "local", base = null;
+
+  /* ---------- datos ---------- */
+  function clone(o){ return JSON.parse(JSON.stringify(o)); }
+
+  function load(){
+    try{
+      var raw = localStorage.getItem(KEY);
+      if(raw){ var s = JSON.parse(raw); if(s && s.rows && s.rows.length) return s; }
+    }catch(e){}
+    return { rows: clone(SEED.rows), savedAt: SEED.savedAt || null };
+  }
+
+  function n(v){ v = parseInt(v,10); return isNaN(v) ? 0 : v; }
+
+  // Suma el stock de las publicaciones activas que tienen tildado "Suma".
+  // El resto (inactivas o agrupadas por ML, que comparten la misma mercadería) queda aparte.
+  function suma(r){ return r.cuenta !== false && r.estado === "Activa"; }
+
+  function skuTotal(rows){
+    var act = 0, fuera = 0, yaContado = {};
+    rows.forEach(function(r){
+      if(!suma(r)) return;
+      act += n(r.stock) + n(r.full);
+      if(r.link) yaContado[r.link] = true;
+    });
+    rows.forEach(function(r){
+      // la copia de una publicación agrupada es la misma mercadería: no es stock aparte
+      if(suma(r) || (r.link && yaContado[r.link])) return;
+      fuera += n(r.stock) + n(r.full);
+    });
+    return { activo: act, fuera: fuera };
+  }
+
+  // Dos publicaciones que suman con el mismo número de stock suelen ser la misma
+  // mercadería cargada dos veces: se marca para que la revisen.
+  function revisar(rows){
+    var v = rows.filter(suma).map(function(r){ return n(r.stock); });
+    return v.some(function(x, i){ return x > 0 && v.indexOf(x) !== i; });
+  }
+
+  function bySku(rows){
+    var order = [], map = {};
+    rows.forEach(function(r){
+      if(!map[r.sku]){ map[r.sku] = []; order.push(r.sku); }
+      map[r.sku].push(r);
+    });
+    return order.map(function(s){ return { sku: s, rows: map[s] }; });
+  }
+
+  /* ---------- filtros ---------- */
+  function filtered(){
+    var q = document.getElementById("q").value.trim().toLowerCase();
+    var est = document.getElementById("fEstado").value;
+    var zero = document.getElementById("fZero").checked;
+    var multi = document.getElementById("fMulti").checked;
+    var rev = document.getElementById("fRev").checked;
+
+    return bySku(state.rows).map(function(g){
+      var rows = g.rows.filter(function(r){
+        if(est && r.estado !== est) return false;
+        if(zero && n(r.stock) + n(r.full) !== 0) return false;
+        return true;
+      });
+      if(q){
+        var hitSku = g.sku.toLowerCase().indexOf(q) >= 0;
+        if(!hitSku) rows = rows.filter(function(r){
+          return (r.mla || "").toLowerCase().indexOf(q) >= 0 ||
+                 (r.title || "").toLowerCase().indexOf(q) >= 0;
+        });
+      }
+      if(multi && g.rows.length < 2) rows = [];
+      if(rev && !revisar(g.rows)) rows = [];
+      return { sku: g.sku, rows: rows, all: g.rows };
+    }).filter(function(g){ return g.rows.length; });
+  }
+
+  /* ---------- render ---------- */
+  function esc(s){
+    return String(s == null ? "" : s)
+      .replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;").replace(/"/g,"&quot;");
+  }
+
+  function isCombo(sku){ return /\+/.test(sku); }
+
+  function linkedCount(all, r){
+    if(!r.link) return 1;
+    return all.filter(function(x){ return x.link === r.link; }).length;
+  }
+
+  function rowHTML(r, all){
+    var shared = linkedCount(all, r) > 1;
+    var off = r.estado !== "Activa";
+    var chips = "";
+    if(shared) chips += '<span class="chip c-link" title="Mercado Libre agrupa estas publicaciones: comparten la misma mercadería, por eso suman una sola vez">COMPARTE STOCK</span> ';
+    if(r.variante) chips += '<span class="chip c-var" title="Es una variante dentro de la misma publicación">VARIANTE</span> ';
+    if(n(r.full)) chips += '<span class="chip c-full">' + n(r.full) + ' EN FULL</span> ';
+    if(!n(r.stock) && !n(r.full) && !off) chips += '<span class="chip c-zero">SIN STOCK</span> ';
+
+    return '<tr class="pub' + (off ? " off" : "") + '" data-id="' + esc(r.id) + '">' +
+      '<td><input class="mla" data-f="mla" value="' + esc(r.mla) + '" spellcheck="false"></td>' +
+      '<td><input class="t-in" data-f="title" value="' + esc(r.title) + '">' +
+        (chips ? '<div class="chips">' + chips + "</div>" : "") + "</td>" +
+      '<td><select class="est ' + (off ? "off" : "on") + '" data-f="estado">' +
+        '<option' + (off ? "" : " selected") + '>Activa</option>' +
+        '<option' + (off ? " selected" : "") + '>Inactiva</option></select></td>' +
+      '<td style="text-align:right"><input class="stk" data-f="stock" type="number" min="0" value="' + n(r.stock) + '"></td>' +
+      '<td class="sumcell"><input class="sum" type="checkbox" data-f="cuenta"' +
+        (r.cuenta !== false ? " checked" : "") +
+        ' title="Destildala si esta publicación repite mercadería ya contada en otra"></td>' +
+      '<td><button class="del" data-act="delRow" title="Eliminar publicación">✕</button></td></tr>';
+  }
+
+  function totalHTML(t){
+    return t.activo + (t.fuera ? '<small>' + t.fuera + " sin sumar</small>" : "");
+  }
+
+  function chipsHTML(sku, all){
+    var act = all.filter(function(r){ return r.estado === "Activa"; }).length;
+    var chips = '<span class="chip c-count">' + all.length +
+                (all.length === 1 ? " publicación" : " publicaciones") +
+                " · " + act + " activa" + (act === 1 ? "" : "s") + "</span> ";
+    if(isCombo(sku)) chips += '<span class="chip c-combo" title="El SKU combina más de un producto">COMBO</span> ';
+    if(revisar(all)) chips += '<span class="chip c-warn" title="Hay dos publicaciones que suman con el mismo stock: puede ser la misma mercadería contada dos veces">REVISAR</span> ';
+    return chips;
+  }
+
+  function groupHTML(g){
+    var t = skuTotal(g.all);
+    var open = !collapsed[g.sku];
+
+    var h = '<tbody class="grp" data-sku="' + esc(g.sku) + '">' +
+      '<tr class="sku" data-act="toggle">' +
+        '<td><span class="caret">' + (open ? "▼" : "►") + '</span> <span class="skuname">' + esc(g.sku || "(sin SKU)") + '</span></td>' +
+        '<td data-chips>' + chipsHTML(g.sku, g.all) + "</td>" +
+        '<td class="hint">Stock del SKU</td>' +
+        '<td class="total' + (t.activo ? "" : " zero") + '" data-total>' + totalHTML(t) + "</td>" +
+        '<td><button class="btn btn-line btn-sm" data-act="addRow">+ Publicación</button></td>' +
+        '<td><button class="del" data-act="delSku" title="Eliminar SKU completo">✕</button></td>' +
+      "</tr>";
+    if(open) g.rows.forEach(function(r){ h += rowHTML(r, g.all); });
+    return h + "</tbody>";
+  }
+
+  function render(){
+    var gs = filtered();
+    var head = '<table><thead><tr>' +
+      "<th>SKU / Publicación</th><th>Título</th><th>Estado</th>" +
+      '<th style="text-align:right">Stock</th><th class="sumcell">Suma</th><th></th></tr></thead>';
+    document.getElementById("app").innerHTML = gs.length
+      ? head + gs.map(groupHTML).join("") + "</table>"
+      : '<div class="empty">No hay resultados con esos filtros.</div>';
+    document.getElementById("shown").textContent =
+      gs.length + " SKU visibles de " + bySku(state.rows).length;
+    kpis();
+  }
+
+  function kpis(){
+    var rows = state.rows, gs = bySku(rows);
+    var act = rows.filter(function(r){ return r.estado === "Activa"; });
+    var uni = gs.reduce(function(s,g){ return s + skuTotal(g.rows).activo; }, 0);
+    set("kSku", gs.length);
+    set("kPub", rows.length);
+    set("kAct", act.length);
+    set("kIna", rows.length - act.length);
+    set("kZero", act.filter(function(r){ return !n(r.stock) && !n(r.full); }).length);
+    set("kRev", gs.filter(function(g){ return revisar(g.rows); }).length);
+    set("kUni", uni.toLocaleString("es-AR"));
+  }
+  function set(id, v){ document.getElementById(id).textContent = v; }
+
+  // Actualiza el total de un grupo sin re-renderizar (no pierde el foco del input)
+  function refreshSku(sku){
+    var sel = window.CSS && CSS.escape ? CSS.escape(sku) : sku;
+    var tb = document.querySelector('tbody[data-sku="' + sel + '"]');
+    var all = state.rows.filter(function(r){ return r.sku === sku; });
+    var t = skuTotal(all);
+    if(tb){
+      var cell = tb.querySelector("[data-total]");
+      cell.innerHTML = totalHTML(t);
+      cell.className = "total" + (t.activo ? "" : " zero");
+      tb.querySelector("[data-chips]").innerHTML = chipsHTML(sku, all);
+    }
+    kpis();
+  }
+
+  /* ---------- edición ---------- */
+  function find(id){ return state.rows.filter(function(r){ return r.id === id; })[0]; }
+
+  function markDirty(){
+    dirty = true;
+    var el = document.getElementById("saveState");
+    el.textContent = "Cambios sin guardar";
+    el.className = "dirty";
+  }
+
+  document.getElementById("app").addEventListener("input", function(e){
+    var inp = e.target.closest("input,select"); if(!inp || !inp.dataset.f) return;
+    var tr = e.target.closest("tr.pub"); if(!tr) return;
+    var r = find(tr.dataset.id); if(!r) return;
+    var f = inp.dataset.f;
+
+    if(f === "stock"){
+      r.stock = n(inp.value);
+      // las publicaciones agrupadas comparten mercadería: replico el número
+      if(r.link) state.rows.forEach(function(x){
+        if(x !== r && x.link === r.link && x.sku === r.sku){
+          x.stock = r.stock;
+          var o = document.querySelector('tr.pub[data-id="' + x.id + '"] .stk');
+          if(o) o.value = r.stock;
+        }
+      });
+      refreshSku(r.sku);
+    } else if(f === "cuenta"){
+      r.cuenta = inp.checked;
+      refreshSku(r.sku);
+    } else {
+      r[f] = inp.value;
+    }
+    markDirty();
+  });
+
+  document.getElementById("app").addEventListener("change", function(e){
+    var sel = e.target.closest("select[data-f=estado]"); if(!sel) return;
+    var tr = e.target.closest("tr.pub");
+    var r = find(tr.dataset.id); if(!r) return;
+    r.estado = sel.value;
+    sel.className = "est " + (r.estado === "Activa" ? "on" : "off");
+    tr.classList.toggle("off", r.estado !== "Activa");
+    refreshSku(r.sku);
+    markDirty();
+  });
+
+  document.getElementById("app").addEventListener("click", function(e){
+    var b = e.target.closest("[data-act]"); if(!b) return;
+    var tb = e.target.closest("tbody"); var sku = tb ? tb.dataset.sku : null;
+    var act = b.dataset.act;
+
+    if(act === "toggle"){
+      if(e.target.closest("[data-act=addRow],[data-act=delSku]")) return;
+      collapsed[sku] = !collapsed[sku]; render(); return;
+    }
+    if(act === "addRow"){
+      collapsed[sku] = false;
+      state.rows.push(newRow(sku)); markDirty(); render(); return;
+    }
+    if(act === "delSku"){
+      var count = state.rows.filter(function(r){ return r.sku === sku; }).length;
+      if(!confirm("¿Eliminar el SKU " + sku + " y sus " + count + " publicaciones?")) return;
+      state.rows = state.rows.filter(function(r){ return r.sku !== sku; });
+      markDirty(); render(); return;
+    }
+    if(act === "delRow"){
+      var tr = e.target.closest("tr.pub");
+      var r = find(tr.dataset.id);
+      if(!confirm("¿Eliminar la publicación " + (r.mla || "nueva") + "?")) return;
+      state.rows = state.rows.filter(function(x){ return x.id !== r.id; });
+      markDirty(); render(); return;
+    }
+  });
+
+  function newRow(sku){
+    return { id: "n" + Date.now() + Math.random().toString(36).slice(2,6),
+             sku: sku, mla: "", title: "", stock: 0, full: 0,
+             estado: "Activa", link: "", variante: false, cuenta: true };
+  }
+
+  function addSku(){
+    var sku = prompt("Nuevo SKU:");
+    if(!sku) return;
+    sku = sku.trim();
+    if(state.rows.some(function(r){ return r.sku === sku; })){
+      toast("Ese SKU ya está en la lista"); return;
+    }
+    state.rows.push(newRow(sku));
+    markDirty(); render();
+    var tb = document.querySelector('tbody[data-sku="' + (window.CSS && CSS.escape ? CSS.escape(sku) : sku) + '"]');
+    if(tb) tb.scrollIntoView({ behavior: "smooth", block: "center" });
+  }
+
+  /* ---------- guardar ---------- */
+  function stamp(iso){
+    var d = new Date(iso || state.savedAt);
+    return d.toLocaleDateString("es-AR") + " " +
+           d.toLocaleTimeString("es-AR", { hour: "2-digit", minute: "2-digit" });
+  }
+
+  function setState(txt, cls){
+    var el = document.getElementById("saveState");
+    el.textContent = txt;
+    el.className = cls || "";
+  }
+
+  function saveLocal(){
+    try{ localStorage.setItem(KEY, JSON.stringify(state)); return true; }
+    catch(err){ return false; }
+  }
+
+  // Guardar = dejarlo en el servidor si la planilla está publicada en Netlify.
+  // Si no hay servidor (archivo suelto o portal), queda en este navegador.
+  function save(){
+    state.savedAt = new Date().toISOString();
+    var local = saveLocal();
+    if(modo !== "servidor"){
+      dirty = false;
+      if(local){ setState("Guardado en este navegador · " + stamp()); toast("Cambios guardados en este navegador"); }
+      else { setState("No se pudo guardar", "dirty"); toast("Este navegador no deja guardar. Usá «Descargar copia»."); }
+      return local;
+    }
+    empujar();
+    return true;
+  }
+
+  // pisar = el savedAt que el servidor reportó en el conflicto. Mandarlo como base
+  // es decirle "sé que hay una versión más nueva y la reemplazo", y corta ahí.
+  function empujar(pisar){
+    setState("Guardando…");
+    api("PUT", { rows: state.rows, base: pisar || base, editor: quien() })
+      .then(function(res){
+        if(res.status === 409){
+          res.json().then(function(d){
+            if(confirm("Otra persona guardó cambios el " + stamp(d.savedAt) + ", después de que abriste esta planilla.\n\n" +
+                       "Aceptar: pisar lo de esa persona con lo tuyo.\n" +
+                       "Cancelar: descartar lo tuyo y traer lo del servidor.")){
+              empujar(d.savedAt);
+            } else {
+              traer(true);
+            }
+          });
+          return;
+        }
+        if(res.status === 401){ pedirClave(function(){ empujar(pisar); }); return; }
+        if(!res.ok) throw new Error(res.status);
+        return res.json().then(function(d){
+          base = d.savedAt;
+          state.savedAt = d.savedAt;
+          dirty = false;
+          saveLocal();
+          aviso(false);
+          setState("Guardado para todos · " + stamp());
+          toast("Guardado en el servidor: ya lo ven los dos");
+        });
+      })
+      .catch(function(){
+        setState("Sin conexión · guardado acá", "dirty");
+        toast("No hubo conexión con el servidor. Quedó guardado en este navegador.");
+      });
+  }
+
+  // Trae lo que hay en el servidor. adoptar=true pisa lo que tengas en pantalla.
+  function traer(adoptar){
+    return api("GET").then(function(res){
+      if(res.status === 401){ pedirClave(function(){ traer(adoptar); }); return; }
+      if(!res.ok) throw new Error(res.status);
+      var ct = res.headers.get("content-type") || "";
+      if(ct.indexOf("json") < 0) throw new Error("sin api");
+      return res.json().then(function(d){
+        modo = "servidor";
+        if(!d || !d.rows){                       // servidor vacío: subo lo que tengo
+          setState("Sin datos en el servidor");
+          return;
+        }
+        if(d.savedAt === base && !adoptar) return;
+        if(dirty && !adoptar){ aviso(true, d.savedAt); return; }
+        var venia = base;
+        base = d.savedAt;
+        state = { rows: d.rows, savedAt: d.savedAt };
+        dirty = false;
+        aviso(false);
+        render();
+        setState("Guardado para todos · " + stamp());
+        // si ya tenía datos cargados, los números cambiaron solos: hay que avisar
+        if(venia) toast("Actualizado: otra persona guardó cambios" + (d.editor ? " (" + d.editor + ")" : ""));
+      });
+    });
+  }
+
+  function aviso(mostrar, cuando){
+    var el = document.getElementById("alert");
+    el.hidden = !mostrar;
+    if(mostrar) el.innerHTML = "<b>Ojo:</b> otra persona guardó cambios el " + stamp(cuando) +
+      " y vos tenés ediciones sin guardar. Si guardás, te va a preguntar cuál versión queda.";
+  }
+
+  function api(method, body){
+    var h = { "content-type": "application/json" };
+    var clave = localStorage.getItem(PASS_KEY);
+    if(clave) h["x-peyen-pass"] = clave;
+    return fetch(API, { method: method, headers: h, body: body ? JSON.stringify(body) : undefined });
+  }
+
+  function pedirClave(luego){
+    var c = prompt("Clave de acceso a la planilla:");
+    if(!c) return;
+    try{ localStorage.setItem(PASS_KEY, c); }catch(e){}
+    luego();
+  }
+
+  function quien(){
+    var q = localStorage.getItem("peyen-quien");
+    if(!q){
+      q = prompt("¿Quién sos? (queda anotado junto al último guardado)") || "";
+      try{ localStorage.setItem("peyen-quien", q); }catch(e){}
+    }
+    return q;
+  }
+
+  // Genera un HTML nuevo con los datos actuales adentro: ese archivo es el que se sube al portal.
+  function download(){
+    save();
+    var doc = document.documentElement.cloneNode(true);
+    doc.querySelector("#seed").textContent =
+      JSON.stringify({ savedAt: state.savedAt, rows: state.rows }).replace(/</g, "\\u003c");
+    doc.querySelector("#app").innerHTML = "";
+    doc.querySelector("#toast").textContent = "";
+    doc.querySelector("#saveState").textContent = "—";
+    doc.querySelector("#q").setAttribute("value", "");
+    var html = "<!doctype html>\n" + doc.outerHTML;
+    var a = document.createElement("a");
+    a.href = URL.createObjectURL(new Blob([html], { type: "text/html" }));
+    a.download = "peyen-stock-" + new Date().toISOString().slice(0,10) + ".html";
+    a.click();
+    setTimeout(function(){ URL.revokeObjectURL(a.href); }, 4000);
+  }
+
+  function reset(){
+    if(!confirm("Vuelve a los datos originales del archivo y se descarta todo lo editado. ¿Seguir?")) return;
+    try{ localStorage.removeItem(KEY); }catch(e){}
+    state = { rows: clone(SEED.rows), savedAt: SEED.savedAt || null };
+    aviso(false);
+    render();
+    if(modo === "servidor"){
+      markDirty();
+      setState("Datos originales · falta Guardar", "dirty");
+      toast("Volvió a los datos originales. Apretá Guardar para que lo vean los demás.");
+    } else {
+      dirty = false;
+      setState("Datos originales");
+    }
+  }
+
+  var tId;
+  function toast(msg){
+    var t = document.getElementById("toast");
+    t.textContent = msg; t.className = "show";
+    clearTimeout(tId); tId = setTimeout(function(){ t.className = ""; }, 2600);
+  }
+
+  /* ---------- eventos ---------- */
+  ["q","fEstado","fZero","fMulti","fRev"].forEach(function(id){
+    document.getElementById(id).addEventListener("input", render);
+  });
+  document.getElementById("btnSave").addEventListener("click", save);
+  document.getElementById("btnDownload").addEventListener("click", download);
+  document.getElementById("btnReset").addEventListener("click", reset);
+  document.getElementById("btnAddSku").addEventListener("click", addSku);
+  document.getElementById("btnAddSku2").addEventListener("click", addSku);
+  document.getElementById("btnToggle").addEventListener("click", function(){
+    allCollapsed = !allCollapsed;
+    collapsed = {};
+    if(allCollapsed) bySku(state.rows).forEach(function(g){ collapsed[g.sku] = true; });
+    this.textContent = allCollapsed ? "Expandir todo" : "Contraer todo";
+    render();
+  });
+  document.addEventListener("keydown", function(e){
+    if((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "s"){ e.preventDefault(); save(); }
+  });
+  window.addEventListener("beforeunload", function(e){
+    if(dirty){ e.preventDefault(); e.returnValue = ""; }
+  });
+
+  // el encabezado de la tabla se pega justo debajo de la barra superior, mida lo que mida
+  function stickTop(){
+    document.documentElement.style.setProperty(
+      "--th-top", document.querySelector("header").offsetHeight + "px");
+  }
+  window.addEventListener("resize", stickTop);
+
+  /* ---------- arranque ---------- */
+  stickTop();
+  state = load();
+  setState(state.savedAt ? "Guardado en este navegador · " + stamp() : "Sin cambios guardados");
+  render();
+
+  // Primero muestro lo que tengo (rápido y funciona sin internet), después pregunto
+  // al servidor. Si no hay servidor, la planilla sigue andando en modo local.
+  traer().catch(function(){ modo = "local"; });
+  setInterval(function(){ if(modo === "servidor") traer().catch(function(){}); }, 30000);
+})();
+</script>
+</body>
+</html>

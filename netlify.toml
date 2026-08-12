@@ -1,0 +1,8 @@
+[build]
+  publish = "public"
+  functions = "netlify/functions"
+
+# La planilla se genera antes de subirla (python src/build.py), así que Netlify
+# solo publica lo que hay en public/.
+[build.environment]
+  NODE_VERSION = "20"

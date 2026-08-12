@@ -1,0 +1,4 @@
+node_modules/
+.netlify/
+# Los export de Mercado Libre no van al repo: son datos del cliente.
+*.xlsx
