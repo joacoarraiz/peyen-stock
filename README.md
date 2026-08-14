@@ -1,9 +1,10 @@
 # Peyen · Control de stock por SKU
 
-Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Dos vistas:
+Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Tres vistas:
 
 - **Por SKU** — se carga el stock físico de cada SKU y se reparte solo entre sus publicaciones.
 - **Por publicación** — cada MLA con su título, estado y stock, agrupado por SKU.
+- **En Full** — la mercadería que está en el depósito de Mercado Libre, editable aparte.
 
 Los cambios se guardan en el servidor: los ve cualquiera que entre con la clave.
 
@@ -35,6 +36,25 @@ Reglas:
 Ejemplo real del catálogo: `68501/A` con 3 unidades, usado por 3 publicaciones (dos propias y
 un combo) → 1 a cada una. Si `TS-30023`, la otra parte del combo, no alcanza para dar 1 por
 publicación, el combo queda en 0 y sobran 2 unidades de `68501/A` reservadas sin poder venderse.
+
+### Publicaciones sincronizadas y de catálogo
+
+Cuando la misma mercadería está publicada dos veces —catálogo, o dos publicaciones que ML
+muestra como *«Sincronizada con #…»*— **el stock no se divide entre ellas**: es el mismo stock
+mostrado dos veces. Se reconocen por el `FAMILY_ID` del export y cuentan como **un solo
+consumidor** en el reparto.
+
+Verificado sobre este catálogo: los **41** productos de catálogo con más de una publicación
+vienen agrupados por `FAMILY_ID`, ninguno queda suelto. `SF-100` tiene 2 publicaciones
+sincronizadas y con 7 unidades las dos muestran 7; `K-7806/S` tiene 4 publicaciones distintas
+(distinto vehículo) y con 12 unidades cada una recibe 3.
+
+### La mercadería en Full
+
+El stock que está en el depósito de Mercado Libre se maneja en su propia pestaña. **No entra en
+el reparto** —no está en el galpón de Peyen— pero **sí suma al total del SKU**, porque se vende
+igual. La pestaña lista las publicaciones que ya tienen Full; para cargarle Full a cualquier
+otra, se la busca por MLA, SKU o título.
 
 ### Combos que no se pueden calcular
 

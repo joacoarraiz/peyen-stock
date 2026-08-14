@@ -235,6 +235,7 @@
 <div class="tabs">
   <button class="tab on" data-vista="pub">Por publicación</button>
   <button class="tab" data-vista="sku">Por SKU · cargar stock</button>
+  <button class="tab" data-vista="full">En Full</button>
 </div>
 
 <div class="wrap">
@@ -624,8 +625,51 @@
     kpis();
   }
 
+  /* La mercadería que está en el depósito de Mercado Libre. No entra en el reparto
+     —no está en el galpón de Peyen— pero sí se vende, así que suma al total del SKU. */
+  function renderFull(){
+    var q = document.getElementById("q").value.trim().toLowerCase();
+    var lista = state.rows.filter(function(r){
+      if(q) return (r.mla + " " + r.sku + " " + r.title).toLowerCase().indexOf(q) >= 0;
+      return n(r.full) > 0;                    // sin buscar, solo las que ya tienen Full
+    });
+    lista.sort(function(a, b){ return n(b.full) - n(a.full) || natCmp(a.sku, b.sku); });
+
+    var unidades = state.rows.reduce(function(s, r){ return s + n(r.full); }, 0);
+    var cuantas = state.rows.filter(function(r){ return n(r.full) > 0; }).length;
+
+    var h = '<table><thead><tr><th>Publicación</th><th>SKU</th><th>Título</th>' +
+      '<th style="text-align:right">En Full</th>' +
+      '<th style="text-align:right">En depósito</th><th>Estado</th></tr></thead><tbody>';
+
+    if(!lista.length){
+      h += '<tr><td colspan="6" class="empty">' + (q
+        ? "Ninguna publicación coincide con la búsqueda."
+        : "No hay publicaciones con stock en Full.<br>Buscá una por MLA, SKU o título para cargarle stock.") +
+        "</td></tr>";
+    }
+    lista.forEach(function(r){
+      var off = r.estado !== "Activa";
+      h += '<tr class="pub' + (off ? " off" : "") + '" data-id="' + esc(r.id) + '">' +
+        '<td><span class="mla">' + esc(r.mla) + "</span></td>" +
+        '<td><span class="skuname" style="font-size:14px">' + esc(r.sku) + "</span></td>" +
+        '<td class="desc">' + esc(r.title) + "</td>" +
+        '<td style="text-align:right"><input class="stk" type="number" min="0" data-full value="' + n(r.full) + '"></td>' +
+        '<td class="rep">' + n(r.stock) + "</td>" +
+        '<td>' + (off ? '<span class="chip c-count">INACTIVA</span>' : '<span class="chip c-var">ACTIVA</span>') +
+        "</td></tr>";
+    });
+
+    document.getElementById("app").innerHTML = h + "</tbody></table>";
+    document.getElementById("shown").textContent =
+      cuantas + " publicaciones en Full · " + unidades + " unidades" +
+      (q ? " · mostrando las que coinciden con la búsqueda" : "");
+    kpis();
+  }
+
   function render(){
     if(vista === "sku"){ asegurarSku(); renderSku(); return; }
+    if(vista === "full"){ renderFull(); return; }
     var gs = filtered();
     var head = '<table><thead><tr>' +
       "<th>SKU / Publicación</th><th>Título</th><th>Estado</th>" +
@@ -691,6 +735,21 @@
         (window.CSS && CSS.escape ? CSS.escape(quien) : quien) + '"] [data-sku-stock]');
       if(otra){ otra.focus(); otra.setSelectionRange(otra.value.length, otra.value.length); }
       markDirty();
+      return;
+    }
+
+    // vista Full: se edita el stock del depósito de ML, que no entra en el reparto
+    var enFull = e.target.closest("[data-full]");
+    if(enFull){
+      var fi = find(e.target.closest("tr.pub").dataset.id);
+      if(fi){
+        fi.full = n(enFull.value);
+        document.getElementById("shown").textContent =
+          state.rows.filter(function(r){ return n(r.full) > 0; }).length + " publicaciones en Full · " +
+          state.rows.reduce(function(s, r){ return s + n(r.full); }, 0) + " unidades";
+        kpis();
+        markDirty();
+      }
       return;
     }
 
@@ -1516,12 +1575,18 @@
     b.addEventListener("click", function(){
       vista = b.dataset.vista;
       document.querySelectorAll(".tab").forEach(function(x){ x.classList.toggle("on", x === b); });
-      // los filtros de publicaciones no aplican a la vista por SKU
+      // los filtros de publicaciones solo aplican a la vista de publicaciones
       document.querySelectorAll(".chk, #fEstado, #btnToggle")
-        .forEach(function(x){ x.style.display = vista === "sku" ? "none" : ""; });
+        .forEach(function(x){ x.style.display = vista === "pub" ? "" : "none"; });
       var txt = vista === "sku" ? "+ Agregar SKU" : "+ Agregar publicación";
       document.getElementById("btnAddSku").textContent = txt;
       document.getElementById("btnAddSku2").textContent = txt;
+      ["btnAddSku","btnAddSku2"].forEach(function(id){
+        document.getElementById(id).style.display = vista === "full" ? "none" : "";
+      });
+      document.getElementById("q").placeholder = vista === "full"
+        ? "Buscá la publicación a la que quieras cargarle stock en Full…"
+        : "Buscar por SKU, MLA o título…";
       render();
     });
   });
