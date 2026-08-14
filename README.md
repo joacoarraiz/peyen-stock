@@ -52,13 +52,41 @@ cargada dos veces, y eso lo confirma quien conoce el depósito.
 
 ## Excel
 
-- **Descargar Excel** baja la tabla de publicaciones (SKU, MLA, título, estado, stock, suma).
-- **Cargar Excel** acepta esa misma planilla editada, o un **export nuevo de Mercado Libre**
-  (Publicaciones → Modificar masivamente). Reconoce cuál es por los encabezados y muestra un
-  resumen de qué cambia antes de aplicar nada.
+**Descargar Excel** baja la tabla de publicaciones (SKU, MLA, título, estado, stock, suma).
+
+**Cargar Excel** abre un asistente en vez de aplicar nada a ciegas. Acepta cualquier planilla:
+
+1. **Hoja** — las lista todas con su cantidad de filas y elige la más grande.
+2. **Tipo** — *publicaciones* (una fila por MLA) o *stock por SKU* (sin MLA). Lo adivina solo
+   buscando una columna de MLA en los encabezados.
+3. **Columnas** — qué columna es cada campo, con el nombre real del archivo al lado. Se puede
+   cambiar a mano.
+4. **Qué pisar** — tildar solo stock, o también título y estado.
+5. **Qué filas** — por lote (las que ya están / las nuevas / las que traen 0) o una por una,
+   con el detalle de por qué cada fila entra o queda afuera.
+
+Lo que ya existe se reconoce por **MLA** (publicaciones) o por **SKU** (stock), y solo se
+actualiza; lo que no existe se agrega. Nunca borra filas que el archivo no traiga.
+
+Casos que resuelve solo:
+
+- La planilla del cliente agrega **una columna de stock por fecha** (`STOCK`, `14-3 stock`,
+  … `3/8 stock`). Elige **la última que tenga datos**, no la primera que encuentra.
+- Una **celda de stock vacía no es un cero**: esa fila queda afuera con el cartel *sin dato de
+  stock* en vez de borrar lo que ya había.
+- Las **filas madre de variantes** del export de ML (SKU vacío, stock ya sumado) se descartan.
+- El **agrupador de ML** (`FAMILY_ID`) se importa siempre: sin él vuelven las unidades fantasma.
+- Los **combos calculables** no se importan aunque el archivo traiga un número: salen de sus partes.
 
 El motor de Excel no usa librerías: escribe el ZIP a mano y lee con `DecompressionStream`.
 Por eso **hay que abrirla con Chrome o Edge**.
+
+## Agregar a mano
+
+**+ Agregar publicación** pide SKU, MLA, título, stock y estado en un formulario. Desde
+**+ Publicación** dentro de un SKU, el SKU viene puesto y bloqueado. En la vista por SKU el
+mismo botón pide solo SKU y stock, y crea un SKU sin publicaciones (el stock queda cargado y
+se reparte cuando le agregues una).
 
 ## Guardado
 

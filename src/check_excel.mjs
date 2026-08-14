@@ -1,82 +1,119 @@
 /* Prueba el motor de Excel del template SIN navegador: extrae el bloque real del
    HTML generado y lo corre en Node (que ya tiene DecompressionStream y Blob).
 
-   node src/check_excel.mjs [export-de-ML.xlsx]
+   node src/check_excel.mjs
 */
-import { readFileSync, writeFileSync } from "node:fs";
+import { readFileSync, writeFileSync, unlinkSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { dirname, join } from "node:path";
 
 const HERE = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(HERE, "..", "public", "index.html"), "utf8");
 
-// El bloque de Excel vive dentro del IIFE: se recorta por marcas y se evalúa suelto.
 const desde = html.indexOf("/* ================= EXCEL =================");
-const hasta = html.indexOf("function cargarExcel");
+const hasta = html.indexOf("  // Orden natural:");
 if (desde < 0 || hasta < 0) throw new Error("no encontré el bloque de Excel en el HTML");
-const src = html.slice(desde, hasta);
 
-const api = new Function("n", src + `
-  return { buildXlsx, unzip, textoDe, leerHoja, textos, detectar, filasDeML, filasDePlanilla, COLS };
-`)(v => { const x = parseInt(v, 10); return isNaN(x) ? 0 : x; });
+const api = new Function("n", "partesDe", "universoSku", "state", "esc", html.slice(desde, hasta) + `
+  return { buildXlsx, unzip, textoDe, leerHoja, textos, encabezado, mapearColumnas,
+           nombresDeHojas, colName, CAMPOS };
+`)(
+  (v) => { const x = parseInt(v, 10); return isNaN(x) ? 0 : x; },
+  () => null, () => ({}), { rows: [], sku: {} }, (s) => s
+);
 
 let fallos = 0;
-const ok = (cond, msg) => { console.log((cond ? "  OK  " : "FALLA ") + msg); if (!cond) fallos++; };
+const ok = (c, m) => { console.log((c ? "  OK  " : "FALLA ") + m); if (!c) fallos++; };
 
-/* ---------- 1. escribir ---------- */
+/** Abre un .xlsx igual que la app: descomprime, arma las hojas y detecta encabezado. */
+async function abrir(buf) {
+  const z = api.unzip(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
+  const claves = Object.keys(z)
+    .filter((k) => /^xl\/worksheets\/sheet\d+\.xml$/.test(k))
+    .sort((a, b) => +a.match(/\d+/)[0] - +b.match(/\d+/)[0]);
+  const ss = await api.textoDe(z["xl/sharedStrings.xml"]);
+  const shared = (ss.match(/<si>[\s\S]*?<\/si>/g) || []).map(api.textos);
+  const nombres = api.nombresDeHojas(await api.textoDe(z["xl/workbook.xml"]));
+  const hojas = [];
+  for (let i = 0; i < claves.length; i++) {
+    const filas = api.leerHoja(await api.textoDe(z[claves[i]]), shared);
+    if (filas.length > 1) hojas.push({ nombre: nombres[i] || `Hoja ${i + 1}`, filas });
+  }
+  return hojas;
+}
+
+/* ---------- 1. escribir y volver a leer ---------- */
 const filas = [
-  api.COLS,
+  ["SKU", "MLA", "Titulo", "Estado", "Stock", "Suma al total"],
   ["K-7806", "MLA1493593951", "Kit Pernos Caliper VW Bora Golf", "Activa", 5, "Si"],
   ["K-7806", "MLA2068905132", 'Kit "Pernos" & Caliper <Ford> Ecosport', "Inactiva", 0, "No"],
   ["6811 + TS-30023", "MLA2609575884", "Bomba Freno 1'' Pala Michigan + Líquido", "Activa", 12, "Si"],
 ];
-const blob = api.buildXlsx(filas);
-const bytes = Buffer.from(await blob.arrayBuffer());
+const bytes = Buffer.from(await api.buildXlsx(filas).arrayBuffer());
 const tmp = join(HERE, "..", "_prueba.xlsx");
 writeFileSync(tmp, bytes);
 ok(bytes.length > 800, `xlsx escrito (${bytes.length} bytes)`);
 
-/* ---------- 2. leerlo de vuelta ---------- */
-const leer = async (buf) => {
-  const z = api.unzip(buf.buffer.slice(buf.byteOffset, buf.byteOffset + buf.byteLength));
-  const ss = await api.textoDe(z["xl/sharedStrings.xml"]);
-  const shared = (ss.match(/<si>[\s\S]*?<\/si>/g) || []).map(api.textos);
-  const hojas = Object.keys(z).filter((k) => /^xl\/worksheets\/.*\.xml$/.test(k));
-  for (const h of hojas) {
-    const f = api.leerHoja(await api.textoDe(z[h]), shared);
-    const d = api.detectar(f);
-    if (d) return { filas: f, d };
-  }
-  return null;
-};
-
-const round = await leer(bytes);
-ok(round && round.d.tipo === "planilla", "se reconoce como planilla propia");
-const rt = round.filas.slice(1);
+const propio = await abrir(bytes);
+const head0 = api.encabezado(propio[0].filas);
+const m0 = api.mapearColumnas(propio[0].filas, head0, "pub");
+ok(propio.length === 1 && propio[0].nombre === "Stock", "una hoja, se lee su nombre");
+ok(m0.mla === 1 && m0.sku === 0 && m0.title === 2 && m0.estado === 3 && m0.stock === 4,
+  "columnas propias mapeadas solas");
+const rt = propio[0].filas.slice(head0 + 1);
 ok(rt.length === 3, `vuelven las 3 filas (${rt.length})`);
-ok(rt[1][2] === 'Kit "Pernos" & Caliper <Ford> Ecosport', "comillas, & y <> sobreviven al viaje");
+ok(rt[1][2] === 'Kit "Pernos" & Caliper <Ford> Ecosport', "comillas, & y <> sobreviven");
 ok(rt[2][0] === "6811 + TS-30023", "el SKU combo se mantiene entero");
-ok(String(rt[0][4]) === "5", "el stock vuelve como número");
+unlinkSync(tmp);
 
-/* ---------- 3. el export real de Mercado Libre ---------- */
-const xlsx = process.argv[2] ||
-  "C:/Users/PC/Downloads/Publicaciones-2026_08_12-11_27.xlsx";
+/* ---------- 2. export de publicaciones de Mercado Libre ---------- */
 try {
-  const buf = readFileSync(xlsx);
-  const hit = await leer(buf);
-  ok(hit && hit.d.tipo === "ml", "el export de ML se reconoce solo");
-  const rows = api.filasDeML(hit.filas, hit.d);
-  ok(rows.length === 572, `572 publicaciones (${rows.length})`);
-  ok(new Set(rows.map((r) => r.sku)).size === 492, "492 SKU");
-  ok(rows.every((r) => r.sku), "ninguna fila sin SKU (las madres de variantes se descartan)");
-
-  // el resultado tiene que coincidir con lo que produce build.py
-  const seed = (await import("../netlify/functions/seed.mjs")).default;
-  const clave = (r) => [r.id, r.sku, r.stock, r.full, r.estado, r.link, r.cuenta].join("|");
-  const a = new Set(seed.map(clave)), difs = rows.filter((r) => !a.has(clave(r)));
-  ok(difs.length === 0, `coincide fila por fila con build.py${difs.length ? ": " + JSON.stringify(difs[0]) : ""}`);
+  const hojas = await abrir(readFileSync("C:/Users/PC/Downloads/Publicaciones-2026_08_12-11_27.xlsx"));
+  const h = hojas.reduce((a, b) => (b.filas.length > a.filas.length ? b : a));
+  ok(h.nombre === "Publicaciones", `elige la hoja grande: ${h.nombre}`);
+  const head = api.encabezado(h.filas);
+  const m = api.mapearColumnas(h.filas, head, "pub");
+  const hdr = h.filas[head];
+  ok(hdr[m.mla] === "ITEM_ID" && hdr[m.sku] === "SKU" && hdr[m.title] === "TITLE",
+    "MLA/SKU/Título mapeados por ITEM_ID/SKU/TITLE");
+  ok(hdr[m.stock] === "STOCK_FLEX", "stock = STOCK_FLEX (no el de Full)");
+  ok(hdr[m.estado] === "STATUS" && hdr[m.link] === "FAMILY_ID",
+    "estado y agrupador de ML mapeados");
+  const datos = h.filas.slice(head + 1).filter((r) => r && /^MLA\d+/.test(String(r[m.mla] || "")));
+  ok(datos.length === 574, `574 filas de datos (${datos.length})`);
+  ok(datos.filter((r) => !String(r[m.sku] || "").trim()).length === 2,
+    "quedan las 2 filas madre de variantes, que el importador descarta");
 } catch (e) {
-  if (e.code === "ENOENT") console.log("  --  sin el export de ML a mano, salteo esa parte");
+  if (e.code === "ENOENT") console.log("  --  sin el export de ML, salteo");
+  else throw e;
+}
+
+/* ---------- 3. planilla de stock del cliente ---------- */
+try {
+  const hojas = await abrir(readFileSync("C:/Users/PC/Downloads/PROD PEYEN PARA MLIBRE  .xlsx"));
+  const h = hojas.find((x) => x.nombre === "productos");
+  ok(!!h, "encuentra la hoja 'productos' entre las 28 del archivo");
+  const head = api.encabezado(h.filas);
+  const m = api.mapearColumnas(h.filas, head, "sku");
+  const hdr = h.filas[head];
+  ok(String(hdr[m.sku]).trim() === "Código", "SKU = columna Código");
+  // la trampa: hay 35 columnas de stock por fecha y la buena es la última con datos
+  ok(String(hdr[m.stock]).trim() === "3/8 stock",
+    `stock = última columna cargada, no la primera (dio "${String(hdr[m.stock]).trim()}")`);
+  const codigos = h.filas.slice(head + 1)
+    .map((r) => String((r && r[m.sku]) || "").trim()).filter(Boolean);
+  ok(codigos.length === 541, `541 códigos (${codigos.length})`);
+  const conStock = h.filas.slice(head + 1).filter((r) => r && String(r[m.stock] ?? "").trim() !== "");
+  ok(conStock.length === 541, `541 con stock en esa columna (${conStock.length})`);
+
+  // cruce contra el catálogo
+  const seedSrc = readFileSync(join(HERE, "..", "netlify", "functions", "seed.mjs"), "utf8");
+  const seed = JSON.parse(seedSrc.slice(seedSrc.indexOf("export default") + 14).trim().replace(/;$/, ""));
+  const nuestros = new Set(seed.map((r) => r.sku));
+  const cruzan = codigos.filter((c) => nuestros.has(c)).length;
+  ok(cruzan === 490, `490 códigos del cliente cruzan con el catálogo (${cruzan})`);
+} catch (e) {
+  if (e.code === "ENOENT") console.log("  --  sin la planilla del cliente, salteo");
   else throw e;
 }
 

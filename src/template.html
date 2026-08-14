@@ -140,6 +140,38 @@
   .card .err{color:var(--red);font-size:13px;min-height:18px;margin:10px 0 0}
   body.locked{overflow:hidden}
 
+  /* ---------- modales ---------- */
+  .modal{position:fixed;inset:0;background:rgba(0,31,60,.55);z-index:90;display:flex;
+         align-items:center;justify-content:center;padding:24px}
+  .modal[hidden]{display:none}
+  .box{background:#fff;border-radius:14px;width:min(1020px,100%);max-height:90vh;
+       display:flex;flex-direction:column;box-shadow:0 24px 60px rgba(0,0,0,.35)}
+  .box h2{margin:0;padding:18px 24px;border-bottom:1px solid var(--line);font-size:17px;color:var(--navy)}
+  .box h2 small{display:block;font-weight:400;font-size:12.5px;color:var(--muted);margin-top:3px}
+  .box .body{padding:20px 24px;overflow:auto;flex:1}
+  .box .foot2{padding:14px 24px;border-top:1px solid var(--line);display:flex;gap:10px;
+              align-items:center;justify-content:flex-end;background:#f7f9fc;border-radius:0 0 14px 14px}
+  .box .foot2 .hint{margin-right:auto}
+  .paso{font-size:11.5px;text-transform:uppercase;letter-spacing:.6px;color:var(--muted);
+        font-weight:700;margin:0 0 8px}
+  .paso:not(:first-child){margin-top:22px}
+  .campos{display:grid;grid-template-columns:repeat(auto-fit,minmax(210px,1fr));gap:10px}
+  .campo{border:1px solid var(--line);border-radius:9px;padding:9px 11px}
+  .campo label{display:block;font-size:12px;color:var(--muted);margin-bottom:4px;font-weight:600}
+  .campo select,.campo input{width:100%;border:1px solid var(--line);border-radius:6px;padding:6px 8px}
+  .campo.off{opacity:.5}
+  .previa{max-height:290px;overflow:auto;border:1px solid var(--line);border-radius:9px;margin-top:8px}
+  .previa table{min-width:0;border:0;border-radius:0}
+  .previa thead th{top:0;font-size:11px}
+  .previa td{font-size:13px;padding:5px 10px}
+  .previa tr.nueva{background:#f0f9f3}
+  .previa tr.ignorada{opacity:.45}
+  .resumen{display:flex;gap:10px;flex-wrap:wrap;margin-top:10px}
+  .rcard{border:1px solid var(--line);border-radius:9px;padding:8px 14px;font-size:13px}
+  .rcard b{display:block;font-size:19px;color:var(--navy)}
+  .rcard.new b{color:var(--ok)}
+  .rcard.skip b{color:var(--muted)}
+
   #toast{position:fixed;left:50%;bottom:26px;transform:translateX(-50%) translateY(80px);
          background:var(--navy);color:#fff;padding:12px 20px;border-radius:10px;font-size:14px;
          box-shadow:0 8px 24px rgba(0,31,60,.28);opacity:0;transition:.25s;z-index:60;pointer-events:none}
@@ -195,7 +227,7 @@
   <label class="chk"><input type="checkbox" id="fMulti"> SKU con varias publicaciones</label>
   <label class="chk"><input type="checkbox" id="fRev"> Solo los que dicen REVISAR</label>
   <button class="btn btn-line" id="btnToggle">Contraer todo</button>
-  <button class="btn btn-line" id="btnAddSku">+ Agregar SKU</button>
+  <button class="btn btn-line" id="btnAddSku">+ Agregar publicación</button>
 </div>
 
 <div id="alert" hidden></div>
@@ -208,8 +240,75 @@
 <div class="wrap">
   <div id="app"></div>
   <div class="foot">
-    <button class="btn btn-line" id="btnAddSku2">+ Agregar SKU</button>
+    <button class="btn btn-line" id="btnAddSku2">+ Agregar publicación</button>
     <span class="hint" id="shown"></span>
+  </div>
+</div>
+
+<div class="modal" id="mImport" hidden>
+  <div class="box">
+    <h2>Importar Excel <small id="impArchivo"></small></h2>
+    <div class="body">
+      <p class="paso">1 · Qué trae el archivo</p>
+      <div class="campos">
+        <div class="campo">
+          <label>Hoja</label>
+          <select id="impHoja"></select>
+        </div>
+        <div class="campo">
+          <label>Tipo de archivo</label>
+          <select id="impTipo">
+            <option value="pub">Publicaciones (una fila por MLA)</option>
+            <option value="sku">Stock por SKU (sin MLA)</option>
+          </select>
+        </div>
+      </div>
+
+      <p class="paso">2 · Qué columna es cada cosa</p>
+      <div class="campos" id="impMapa"></div>
+
+      <p class="paso">3 · Qué datos pisar</p>
+      <div class="campos" id="impCampos"></div>
+
+      <p class="paso">4 · Qué filas importar</p>
+      <div class="campos" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
+        <label class="chk"><input type="checkbox" id="impExist" checked> Las que ya están</label>
+        <label class="chk"><input type="checkbox" id="impNuevas" checked> Las nuevas</label>
+        <label class="chk"><input type="checkbox" id="impCeros" checked> Las que traen 0</label>
+      </div>
+      <div class="resumen" id="impResumen"></div>
+      <div class="previa" id="impPrevia"></div>
+    </div>
+    <div class="foot2">
+      <span class="hint" id="impNota"></span>
+      <button class="btn btn-line" id="impCancel">Cancelar</button>
+      <button class="btn btn-primary" id="impOk">Importar</button>
+    </div>
+  </div>
+</div>
+
+<div class="modal" id="mNuevo" hidden>
+  <div class="box" style="width:min(560px,100%)">
+    <h2 id="nuevoTitulo">Agregar publicación</h2>
+    <div class="body">
+      <div class="campos" style="grid-template-columns:1fr">
+        <div class="campo"><label>SKU</label><input id="nSku" placeholder="Ej: K-7806"></div>
+        <div class="campo" id="cMla"><label>Número de publicación (MLA)</label>
+          <input id="nMla" placeholder="Ej: MLA1493593951"></div>
+        <div class="campo" id="cTitulo"><label>Título</label>
+          <input id="nTitulo" placeholder="Como aparece en Mercado Libre"></div>
+        <div class="campos" style="gap:10px">
+          <div class="campo"><label>Stock</label><input id="nStock" type="number" min="0" value="0"></div>
+          <div class="campo" id="cEstado"><label>Estado</label>
+            <select id="nEstado"><option>Activa</option><option>Inactiva</option></select></div>
+        </div>
+      </div>
+      <p class="hint" id="nuevoNota" style="margin-top:12px"></p>
+    </div>
+    <div class="foot2">
+      <button class="btn btn-line" id="nuevoCancel">Cancelar</button>
+      <button class="btn btn-primary" id="nuevoOk">Agregar</button>
+    </div>
   </div>
 </div>
 
@@ -331,6 +430,8 @@
   function universoSku(){
     var u = {};
     state.rows.forEach(function(r){ u[r.sku] = true; });
+    // un SKU puede existir con stock cargado y todavía sin publicación
+    Object.keys(state.sku || {}).forEach(function(s){ u[s] = true; });
     return u;
   }
 
@@ -640,7 +741,7 @@
     }
     if(act === "addRow"){
       collapsed[sku] = false;
-      state.rows.push(newRow(sku)); markDirty(); render(); return;
+      abrirNuevo(sku); return;
     }
     if(act === "delSku"){
       var count = state.rows.filter(function(r){ return r.sku === sku; }).length;
@@ -663,28 +764,66 @@
              estado: "Activa", link: "", variante: false, cuenta: true };
   }
 
-  function addSku(){
-    var sku = prompt("Nuevo SKU:");
-    if(!sku) return;
-    sku = sku.trim();
-    if(state.rows.some(function(r){ return r.sku === sku; })){
-      toast("Ese SKU ya está en la lista"); return;
+  // Alta con formulario: SKU suelto (solo stock) o publicación completa.
+  function abrirNuevo(sku){
+    var soloSku = vista === "sku";
+    document.getElementById("nuevoTitulo").textContent =
+      soloSku ? "Agregar SKU" : (sku ? "Agregar publicación a " + sku : "Agregar publicación");
+    ["cMla","cTitulo","cEstado"].forEach(function(id){
+      document.getElementById(id).style.display = soloSku ? "none" : "";
+    });
+    document.getElementById("nSku").value = sku || "";
+    document.getElementById("nSku").readOnly = !!sku;
+    document.getElementById("nMla").value = "";
+    document.getElementById("nTitulo").value = "";
+    document.getElementById("nStock").value = 0;
+    document.getElementById("nEstado").value = "Activa";
+    document.getElementById("nuevoNota").textContent = soloSku
+      ? "El stock que cargues se reparte solo entre las publicaciones que usen este SKU."
+      : "El MLA y el título los podés completar después, pero sin SKU no se agrupa con nada.";
+    document.getElementById("mNuevo").hidden = false;
+    document.body.classList.add("locked");
+    document.getElementById(sku ? "nMla" : "nSku").focus();
+  }
+
+  function guardarNuevo(){
+    var sku = document.getElementById("nSku").value.trim();
+    if(!sku){ toast("Falta el SKU"); document.getElementById("nSku").focus(); return; }
+    var stock = n(document.getElementById("nStock").value);
+
+    if(vista === "sku"){
+      if(!state.sku) state.sku = {};
+      state.sku[sku] = stock;
+      repartir();
+    } else {
+      var mla = document.getElementById("nMla").value.trim();
+      if(mla && state.rows.some(function(r){ return r.mla === mla && r.sku === sku; })){
+        toast("Esa publicación ya está en la lista"); return;
+      }
+      var r = newRow(sku);
+      r.mla = mla;
+      r.title = document.getElementById("nTitulo").value.trim();
+      r.stock = stock;
+      r.estado = document.getElementById("nEstado").value;
+      state.rows.push(r);
+      collapsed[sku] = false;
     }
-    state.rows.push(newRow(sku));
+
+    cerrarNuevo();
     markDirty();
-    // los filtros pueden estar escondiendo el SKU recién creado
+    // los filtros pueden estar escondiendo lo recién creado
     document.getElementById("q").value = "";
     document.getElementById("fEstado").value = "";
     ["fZero","fMulti","fRev"].forEach(function(id){ document.getElementById(id).checked = false; });
-    collapsed[sku] = false;
     render();
-    var tb = document.querySelector('tbody[data-sku="' + (window.CSS && CSS.escape ? CSS.escape(sku) : sku) + '"]');
-    if(tb){
-      tb.scrollIntoView({ behavior: "smooth", block: "center" });
-      var t = tb.querySelector("tr.pub .t-in");
-      if(t){ t.focus(); }
-      toast("Completá título, MLA y stock en la fila nueva");
-    }
+    var tb = document.querySelector('[data-sku="' + (window.CSS && CSS.escape ? CSS.escape(sku) : sku) + '"]');
+    if(tb) tb.scrollIntoView({ behavior: "smooth", block: "center" });
+    toast(vista === "sku" ? "SKU agregado" : "Publicación agregada");
+  }
+
+  function cerrarNuevo(){
+    document.getElementById("mNuevo").hidden = true;
+    document.body.classList.remove("locked");
   }
 
   /* ---------- guardar ---------- */
@@ -1014,27 +1153,276 @@
     return filas;
   }
 
+  // Nombres de las hojas: xl/workbook.xml las lista en el mismo orden que los archivos.
+  function nombresDeHojas(xml){
+    return (xml.match(/<sheet[^>]*name="([^"]*)"/g) || [])
+      .map(function(s){ return unxml((s.match(/name="([^"]*)"/) || [])[1] || ""); });
+  }
+
   function normal(s){
     return String(s == null ? "" : s).trim().toUpperCase()
       .normalize("NFD").replace(/[̀-ͯ]/g, "");
   }
 
-  // Reconoce las dos planillas que puede subir: la que baja de acá y el export de ML.
-  function detectar(filas){
+  /* ================= IMPORTADOR =================
+     No se aplica nada a ciegas: se elige hoja, qué columna es cada cosa, qué datos
+     pisar y qué filas entran. Lo que ya está se reconoce por MLA (publicaciones) o
+     por SKU (stock del cliente) y solo se actualiza; lo que no está, se agrega. */
+
+  var imp = null;
+
+  var CAMPOS = {
+    pub: [
+      { k: "mla",    t: "MLA",     alias: ["ITEM_ID","MLA","N DE PUBLICACION","NUMERO DE PUBLICACION"], clave: true },
+      { k: "sku",    t: "SKU",     alias: ["SKU","CODIGO"] },
+      { k: "title",  t: "Título",  alias: ["TITLE","TITULO"] },
+      { k: "estado", t: "Estado",  alias: ["STATUS","ESTADO"] },
+      { k: "stock",  t: "Stock",   alias: ["STOCK_FLEX","STOCK","EN MI DEPOSITO"] },
+      // sin el agrupador de ML vuelven las unidades fantasma: es estructural, no opcional
+      { k: "link",   t: "Agrupador de ML", alias: ["FAMILY_ID"], estructural: true }
+    ],
+    sku: [
+      { k: "sku",   t: "SKU",   alias: ["CODIGO","SKU"], clave: true },
+      { k: "stock", t: "Stock", alias: ["STOCK"], ultima: true },
+      { k: "title", t: "Descripción", alias: ["DESCRIPCION 1","DESCRIPCION"] }
+    ]
+  };
+
+  function encabezado(filas){
+    var mejor = 0, punta = -1;
     for(var i = 0; i < Math.min(filas.length, 12); i++){
-      var h = (filas[i] || []).map(normal);
-      if(h.indexOf("ITEM_ID") >= 0) return { tipo: "ml", head: i, h: h };
-      if(h.indexOf("MLA") >= 0 && h.indexOf("SKU") >= 0) return { tipo: "planilla", head: i, h: h };
+      var c = (filas[i] || []).filter(function(x){ return String(x || "").trim(); }).length;
+      if(c > mejor){ mejor = c; punta = i; }
     }
-    return null;
+    return punta < 0 ? 0 : punta;
   }
 
-  function col(h, nombres){
-    for(var i = 0; i < nombres.length; i++){
-      var k = h.indexOf(normal(nombres[i]));
-      if(k >= 0) return k;
+  function abrirImport(file, hojas){
+    imp = { archivo: file.name, hojas: hojas, hoja: 0, tipo: "pub", mapa: {}, pisar: {}, sel: {} };
+    document.getElementById("impArchivo").textContent = file.name;
+    var sel = document.getElementById("impHoja");
+    sel.innerHTML = hojas.map(function(h, i){
+      return '<option value="' + i + '">' + esc(h.nombre) + " (" + Math.max(0, h.filas.length - 1) + " filas)</option>";
+    }).join("");
+
+    var mayor = 0;
+    hojas.forEach(function(h, i){ if(h.filas.length > hojas[mayor].filas.length) mayor = i; });
+    imp.hoja = mayor;
+    sel.value = mayor;
+    var h = hojas[mayor];
+    var tieneMla = (h.filas[encabezado(h.filas)] || []).some(function(x){
+      return /ITEM_ID|MLA|PUBLICACI/i.test(String(x || ""));
+    });
+    imp.tipo = tieneMla ? "pub" : "sku";
+    document.getElementById("impTipo").value = imp.tipo;
+
+    autoMapear();
+    document.getElementById("mImport").hidden = false;
+    document.body.classList.add("locked");
+  }
+
+  // Adivina qué columna es cada campo. Pura a propósito: se prueba sin navegador.
+  function mapearColumnas(filas, head, tipo){
+    var hdr = (filas[head] || []).map(normal), mapa = {};
+    CAMPOS[tipo].forEach(function(c){
+      var i = -1;
+      // "última columna con datos": el archivo del cliente agrega una por fecha
+      // ("STOCK", "14-3 stock", "3/8 stock"...) y la buena es la última cargada.
+      if(c.ultima){
+        for(var j = hdr.length - 1; j >= 0 && i < 0; j--){
+          if(!c.alias.some(function(a){ return hdr[j].indexOf(a) >= 0; })) continue;
+          for(var f = head + 1; f < filas.length; f++){
+            var fila = filas[f];
+            if(fila && String(fila[j] == null ? "" : fila[j]).trim() !== ""){ i = j; break; }
+          }
+        }
+      }
+      for(var k = 0; k < c.alias.length && i < 0; k++) i = hdr.indexOf(c.alias[k]);
+      mapa[c.k] = i;
+    });
+    return mapa;
+  }
+
+  function autoMapear(){
+    var h = imp.hojas[imp.hoja];
+    imp.head = encabezado(h.filas);
+    imp.mapa = mapearColumnas(h.filas, imp.head, imp.tipo);
+    imp.pisar = {}; imp.sel = {};
+    CAMPOS[imp.tipo].forEach(function(c){
+      imp.pisar[c.k] = imp.mapa[c.k] >= 0 && !c.clave && !c.estructural;
+    });
+    dibujarImport();
+  }
+
+  function dibujarImport(){
+    var h = imp.hojas[imp.hoja], hdr = h.filas[imp.head] || [];
+    var opts = '<option value="-1">— ninguna —</option>' + hdr.map(function(x, i){
+      return '<option value="' + i + '">' + esc(colName(i) + " · " + String(x == null ? "" : x).trim().slice(0, 34)) + "</option>";
+    }).join("");
+
+    document.getElementById("impMapa").innerHTML = CAMPOS[imp.tipo].map(function(c){
+      return '<div class="campo"><label>' + c.t + (c.clave ? " · con esto se reconoce" : "") + "</label>" +
+        '<select data-mapa="' + c.k + '">' + opts + "</select></div>";
+    }).join("");
+    CAMPOS[imp.tipo].forEach(function(c){
+      document.querySelector('[data-mapa="' + c.k + '"]').value = imp.mapa[c.k];
+    });
+
+    document.getElementById("impCampos").innerHTML = CAMPOS[imp.tipo]
+      .filter(function(c){ return !c.clave && !c.estructural; }).map(function(c){
+        var hay = imp.mapa[c.k] >= 0;
+        return '<label class="chk' + (hay ? "" : " off") + '"><input type="checkbox" data-pisar="' + c.k + '"' +
+          (imp.pisar[c.k] ? " checked" : "") + (hay ? "" : " disabled") + "> Actualizar " + c.t.toLowerCase() + "</label>";
+      }).join("");
+
+    calcularImport();
+  }
+
+  function calcularImport(){
+    var h = imp.hojas[imp.hoja], m = imp.mapa;
+    // una publicación con variantes repite el MLA con distinto SKU: la clave lleva los dos
+    var porMla = {}, porSku = {};
+    state.rows.forEach(function(r){
+      porMla[r.mla + "||" + r.sku] = r;
+      if(!porMla[r.mla]) porMla[r.mla] = r;
+      porSku[r.sku] = true;
+    });
+    Object.keys(state.sku || {}).forEach(function(s){ porSku[s] = true; });
+    var u = universoSku();
+
+    var hdrTxt = (h.filas[imp.head] || []).map(function(x){ return String(x == null ? "" : x).trim(); });
+    imp.filas = [];
+    for(var i = imp.head + 1; i < h.filas.length; i++){
+      var r = h.filas[i];
+      if(!r) continue;
+      var val = function(k){ return m[k] >= 0 ? String(r[m[k]] == null ? "" : r[m[k]]).trim() : ""; };
+      var sku = val("sku"), mla = val("mla");
+      if(!sku && !mla) continue;
+      if(sku && m.sku >= 0 && sku === hdrTxt[m.sku]) continue;   // encabezado repetido
+
+      var motivo = "";
+      if(imp.tipo === "pub"){
+        if(!mla) motivo = "sin MLA";
+        // la fila madre de una publicación con variantes trae el stock ya sumado
+        else if(m.sku >= 0 && !sku) motivo = "fila madre de variantes";
+      } else if(partesDe(sku, u)) motivo = "combo: se calcula solo";
+      else if(m.stock >= 0 && String(r[m.stock] == null ? "" : r[m.stock]).trim() === "")
+        motivo = "sin dato de stock";   // vacío no es 0: dejarlo pasaría a pisar con cero
+
+      imp.filas.push({
+        i: i, sku: sku, mla: mla, title: val("title"), estado: val("estado"),
+        link: val("link"),
+        stock: m.stock >= 0 ? n(r[m.stock]) : 0,
+        crudo: m.stock >= 0 ? String(r[m.stock] == null ? "" : r[m.stock]).trim() : "",
+        existe: imp.tipo === "pub" ? !!(porMla[mla + "||" + sku] || porMla[mla]) : !!porSku[sku],
+        motivo: motivo
+      });
     }
-    return -1;
+
+    var vExist = document.getElementById("impExist").checked;
+    var vNuevas = document.getElementById("impNuevas").checked;
+    var vCeros = document.getElementById("impCeros").checked;
+    imp.filas.forEach(function(f){
+      f.entra = !f.motivo && (f.existe ? vExist : vNuevas) &&
+        (vCeros || !(imp.pisar.stock && f.crudo !== "" && n(f.stock) === 0));
+      if(imp.sel[f.i] === false) f.entra = false;
+      if(imp.sel[f.i] === true && !f.motivo) f.entra = true;
+    });
+
+    resumenImport();
+
+    var campos = CAMPOS[imp.tipo].filter(function(c){ return imp.mapa[c.k] >= 0 && !c.estructural; });
+    document.getElementById("impPrevia").innerHTML =
+      "<table><thead><tr><th></th>" +
+      campos.map(function(c){ return "<th>" + c.t + "</th>"; }).join("") +
+      "<th></th></tr></thead><tbody>" +
+      imp.filas.slice(0, 400).map(function(f){
+        return '<tr class="' + (f.entra ? (f.existe ? "" : "nueva") : "ignorada") + '">' +
+          '<td><input type="checkbox" data-fila="' + f.i + '"' + (f.entra ? " checked" : "") +
+            (f.motivo ? " disabled" : "") + "></td>" +
+          campos.map(function(c){
+            return "<td>" + esc(c.k === "stock" ? f.crudo : f[c.k] || "") + "</td>";
+          }).join("") +
+          '<td class="hint">' + (f.motivo || (f.existe ? "ya está" : "nueva")) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+
+    document.getElementById("impNota").textContent =
+      imp.filas.length > 400 ? "Se ven las primeras 400 de " + imp.filas.length + " filas" : "";
+  }
+
+  // Contadores y botón. Aparte del redibujado para que destildar una fila no
+  // reconstruya la tabla entera y te tire el scroll al principio.
+  function resumenImport(){
+    var ent = imp.filas.filter(function(f){ return f.entra; });
+    var act = ent.filter(function(f){ return f.existe; }).length;
+    document.getElementById("impResumen").innerHTML =
+      '<div class="rcard"><b>' + act + "</b>se actualizan</div>" +
+      '<div class="rcard new"><b>' + (ent.length - act) + "</b>se agregan</div>" +
+      '<div class="rcard skip"><b>' + (imp.filas.length - ent.length) + "</b>quedan afuera</div>";
+    var b = document.getElementById("impOk");
+    b.textContent = "Importar " + ent.length + " filas";
+    b.disabled = !ent.length;
+  }
+
+  function aplicarImport(){
+    var ent = imp.filas.filter(function(f){ return f.entra; });
+    var porMla = {};
+    state.rows.forEach(function(r){
+      porMla[r.mla + "||" + r.sku] = r;
+      if(!porMla[r.mla]) porMla[r.mla] = r;
+    });
+    if(!state.sku) state.sku = {};
+    var act = 0, nue = 0, tocados = {};
+
+    ent.forEach(function(f){
+      if(imp.tipo === "sku"){
+        state.sku[f.sku] = n(f.stock);
+        if(f.existe) act++; else nue++;
+        return;
+      }
+      var r = porMla[f.mla + "||" + f.sku] || porMla[f.mla];
+      if(r){
+        if(imp.pisar.stock && f.crudo !== "") r.stock = n(f.stock);
+        if(imp.pisar.title && f.title) r.title = f.title;
+        if(imp.pisar.estado && f.estado) r.estado = normal(f.estado) === "INACTIVA" ? "Inactiva" : "Activa";
+        if(f.link) r.link = f.link;
+        act++;
+        tocados[r.sku + "||" + r.link] = true;
+      } else {
+        var nuevo = {
+          id: f.mla + (f.sku ? "-" + f.sku : ""), sku: f.sku || "(sin SKU)", mla: f.mla,
+          title: f.title, stock: n(f.stock), full: 0,
+          estado: normal(f.estado) === "INACTIVA" ? "Inactiva" : "Activa",
+          link: f.link || "", variante: false, cuenta: true
+        };
+        state.rows.push(nuevo);
+        nue++;
+        tocados[nuevo.sku + "||" + nuevo.link] = true;
+      }
+    });
+
+    // en cada grupo que ML agrupa tiene que sumar UNA sola publicación
+    Object.keys(tocados).forEach(function(k){
+      if(k.split("||")[1] === "") return;
+      var primera = true;
+      state.rows.forEach(function(r){
+        if(r.sku + "||" + r.link !== k) return;
+        r.cuenta = primera;
+        primera = false;
+      });
+    });
+
+    if(imp.tipo === "sku") repartir();
+    cerrarImport();
+    markDirty();
+    render();
+    toast(act + " actualizadas · " + nue + " agregadas. Revisá y apretá Guardar.");
+  }
+
+  function cerrarImport(){
+    document.getElementById("mImport").hidden = true;
+    document.body.classList.remove("locked");
+    imp = null;
   }
 
   // Orden natural: 9090/A antes que 12039/A, y K-7806 pegado a K-7806/S.
@@ -1054,137 +1442,36 @@
     return 0;
   }
 
-  // Export de Mercado Libre: mismas reglas que src/build.py.
-  function filasDeML(filas, d){
-    var h = d.h;
-    var cFam = col(h, ["FAMILY_ID"]), cMla = col(h, ["ITEM_ID"]), cVar = col(h, ["VARIATION_ID"]),
-        cSku = col(h, ["SKU"]), cTit = col(h, ["TITLE"]), cStk = col(h, ["STOCK_FLEX"]),
-        cFull = col(h, ["STOCK_FULL"]), cEst = col(h, ["STATUS"]);
-    if(cMla < 0 || cSku < 0) throw new Error("Al Excel de Mercado Libre le faltan columnas");
-
-    var datos = filas.slice(d.head + 1).filter(function(r){
-      return r && /^MLA\d+/.test(String(r[cMla] || "").trim());
-    });
-    var estadoDe = {};
-    datos.forEach(function(r){
-      var e = String(r[cEst] || "").trim();
-      if(e) estadoDe[String(r[cMla]).trim()] = e;
-    });
-
-    var out = [];
-    datos.forEach(function(r){
-      var sku = String(r[cSku] || "").trim();
-      // la fila madre de una publicación con variantes viene sin SKU y su stock ya
-      // es la suma de las variantes: contarla sería duplicar
-      if(!sku) return;
-      var mla = String(r[cMla]).trim(), vari = String(cVar >= 0 ? r[cVar] || "" : "").trim();
-      out.push({
-        id: vari ? mla + "-" + vari : mla,
-        sku: sku, mla: mla,
-        title: String(r[cTit] || "").trim(),
-        stock: n(r[cStk]), full: n(r[cFull]),
-        estado: (String(r[cEst] || "").trim() || estadoDe[mla]) === "Activa" ? "Activa" : "Inactiva",
-        link: cFam >= 0 ? String(r[cFam] || "").trim() : "",
-        variante: !!vari
-      });
-    });
-
-    // Mismo orden que src/build.py: así la publicación que suma es siempre la misma,
-    // se hayan cargado los datos desde el build o desde este Excel.
-    out.sort(function(a, b){ return natCmp(a.sku, b.sku) || (a.mla < b.mla ? -1 : a.mla > b.mla ? 1 : 0); });
-
-    // de cada grupo que ML agrupa (mismo SKU + misma familia) suma uno solo
-    var vistos = {};
-    out.forEach(function(r){
-      var k = r.sku + "||" + r.link;
-      r.cuenta = !(r.link && vistos[k]);
-      vistos[k] = true;
-    });
-    return out;
-  }
-
-  // La planilla que baja de acá: se respeta lo que el usuario editó en Excel y se
-  // conserva lo que Excel no muestra (agrupación, Full, variantes).
-  function filasDePlanilla(filas, d){
-    var h = d.h;
-    var cSku = col(h, ["SKU"]), cMla = col(h, ["MLA"]), cTit = col(h, ["TITULO"]),
-        cEst = col(h, ["ESTADO"]), cStk = col(h, ["STOCK"]), cSum = col(h, ["SUMA AL TOTAL", "SUMA"]);
-    var previo = {};
-    state.rows.forEach(function(r){ previo[r.mla + "||" + r.sku] = r; });
-
-    var out = [];
-    filas.slice(d.head + 1).forEach(function(r){
-      if(!r) return;
-      var mla = String(r[cMla] || "").trim(), sku = String(r[cSku] || "").trim();
-      if(!mla && !sku) return;
-      var viejo = previo[mla + "||" + sku];
-      var si = normal(cSum >= 0 ? r[cSum] : "SI");
-      out.push({
-        id: viejo ? viejo.id : "x" + mla + sku,
-        sku: sku, mla: mla,
-        title: cTit >= 0 ? String(r[cTit] || "").trim() : (viejo ? viejo.title : ""),
-        stock: cStk >= 0 ? n(r[cStk]) : (viejo ? n(viejo.stock) : 0),
-        full: viejo ? n(viejo.full) : 0,
-        estado: normal(cEst >= 0 ? r[cEst] : "") === "INACTIVA" ? "Inactiva" : "Activa",
-        link: viejo ? viejo.link : "",
-        variante: viejo ? !!viejo.variante : false,
-        cuenta: !(si === "NO" || si === "N" || si === "0" || si === "FALSE")
-      });
-    });
-    return out;
-  }
-
   function cargarExcel(file){
     toast("Leyendo " + file.name + "…");
     file.arrayBuffer().then(function(buf){
       var z = unzip(buf);
-      var hojas = Object.keys(z).filter(function(k){ return /^xl\/worksheets\/.*\.xml$/.test(k); });
-      if(!hojas.length) throw new Error("El Excel no tiene ninguna hoja");
-      return textoDe(z["xl/sharedStrings.xml"]).then(function(ss){
-        var shared = (ss.match(/<si>[\s\S]*?<\/si>/g) || []).map(textos);
-        // se prueban todas las hojas y se usa la primera que tenga encabezados conocidos
-        return hojas.reduce(function(prev, nombre){
-          return prev.then(function(hecho){
-            if(hecho) return hecho;
-            return textoDe(z[nombre]).then(function(xml){
-              var filas = leerHoja(xml, shared), d = detectar(filas);
-              return d ? { filas: filas, d: d } : null;
+      var claves = Object.keys(z).filter(function(k){ return /^xl\/worksheets\/sheet\d+\.xml$/.test(k); })
+        .sort(function(a, b){ return (+a.match(/\d+/)[0]) - (+b.match(/\d+/)[0]); });
+      if(!claves.length) throw new Error("El Excel no tiene ninguna hoja");
+      return Promise.all([
+        textoDe(z["xl/sharedStrings.xml"]),
+        textoDe(z["xl/workbook.xml"])
+      ]).then(function(par){
+        var shared = (par[0].match(/<si>[\s\S]*?<\/si>/g) || []).map(textos);
+        var nombres = nombresDeHojas(par[1]);
+        return claves.reduce(function(prev, k, i){
+          return prev.then(function(acc){
+            return textoDe(z[k]).then(function(xml){
+              var filas = leerHoja(xml, shared);
+              // hojas vacías o de ayuda no sirven para importar
+              if(filas.length > 1) acc.push({ nombre: nombres[i] || ("Hoja " + (i + 1)), filas: filas });
+              return acc;
             });
           });
-        }, Promise.resolve(null));
+        }, Promise.resolve([]));
       });
-    }).then(function(hit){
-      if(!hit) throw new Error("No reconocí las columnas. Subí la planilla que baja de acá, o el Excel de Publicaciones de Mercado Libre.");
-      var nuevas = hit.d.tipo === "ml" ? filasDeML(hit.filas, hit.d) : filasDePlanilla(hit.filas, hit.d);
-      if(!nuevas.length) throw new Error("El Excel no traía ninguna publicación");
-      aplicarImport(nuevas, hit.d.tipo);
+    }).then(function(hojas){
+      if(!hojas.length) throw new Error("Ninguna hoja del Excel tiene datos");
+      abrirImport(file, hojas);
     }).catch(function(err){
-      alert("No se pudo cargar el Excel.\n\n" + (err.message || err));
+      alert("No se pudo leer el Excel.\n\n" + (err.message || err));
     });
-  }
-
-  function aplicarImport(nuevas, tipo){
-    var antes = {}, ahora = {};
-    state.rows.forEach(function(r){ antes[r.mla + "||" + r.sku] = r; });
-    nuevas.forEach(function(r){ ahora[r.mla + "||" + r.sku] = r; });
-    var agregadas = nuevas.filter(function(r){ return !antes[r.mla + "||" + r.sku]; }).length;
-    var quitadas = state.rows.filter(function(r){ return !ahora[r.mla + "||" + r.sku]; });
-    var cambiadas = nuevas.filter(function(r){
-      var v = antes[r.mla + "||" + r.sku];
-      return v && (n(v.stock) !== n(r.stock) || v.estado !== r.estado || (v.cuenta !== false) !== (r.cuenta !== false));
-    }).length;
-
-    var msg = (tipo === "ml" ? "Export de Mercado Libre" : "Planilla editada") + "\n\n" +
-      "· " + cambiadas + " publicaciones con cambios\n" +
-      "· " + agregadas + " nuevas\n" +
-      "· " + quitadas.length + " que ya no están (se eliminan)\n\n" +
-      "¿Aplico estos cambios? Después vas a tener que apretar Guardar.";
-    if(!confirm(msg)) return;
-
-    state.rows = nuevas;
-    markDirty();
-    render();
-    toast("Datos cargados. Revisalos y apretá Guardar.");
   }
 
   var tId;
@@ -1203,8 +1490,11 @@
       vista = b.dataset.vista;
       document.querySelectorAll(".tab").forEach(function(x){ x.classList.toggle("on", x === b); });
       // los filtros de publicaciones no aplican a la vista por SKU
-      document.querySelectorAll(".chk, #fEstado, #btnToggle, #btnAddSku")
+      document.querySelectorAll(".chk, #fEstado, #btnToggle")
         .forEach(function(x){ x.style.display = vista === "sku" ? "none" : ""; });
+      var txt = vista === "sku" ? "+ Agregar SKU" : "+ Agregar publicación";
+      document.getElementById("btnAddSku").textContent = txt;
+      document.getElementById("btnAddSku2").textContent = txt;
       render();
     });
   });
@@ -1217,8 +1507,39 @@
     if(this.files[0]) cargarExcel(this.files[0]);
     this.value = "";                       // permite volver a subir el mismo archivo
   });
-  document.getElementById("btnAddSku").addEventListener("click", addSku);
-  document.getElementById("btnAddSku2").addEventListener("click", addSku);
+  document.getElementById("btnAddSku").addEventListener("click", function(){ abrirNuevo(""); });
+  document.getElementById("btnAddSku2").addEventListener("click", function(){ abrirNuevo(""); });
+  document.getElementById("nuevoOk").addEventListener("click", guardarNuevo);
+  document.getElementById("nuevoCancel").addEventListener("click", cerrarNuevo);
+
+  /* ---------- importador ---------- */
+  document.getElementById("impCancel").addEventListener("click", cerrarImport);
+  document.getElementById("impOk").addEventListener("click", aplicarImport);
+  document.getElementById("impHoja").addEventListener("change", function(){
+    imp.hoja = +this.value; autoMapear();
+  });
+  document.getElementById("impTipo").addEventListener("change", function(){
+    imp.tipo = this.value; autoMapear();
+  });
+  ["impExist","impNuevas","impCeros"].forEach(function(id){
+    document.getElementById(id).addEventListener("change", function(){ imp.sel = {}; calcularImport(); });
+  });
+  document.getElementById("mImport").addEventListener("change", function(e){
+    var m = e.target.closest("[data-mapa]");
+    if(m){ imp.mapa[m.dataset.mapa] = +m.value; imp.sel = {}; dibujarImport(); return; }
+    var p = e.target.closest("[data-pisar]");
+    if(p){ imp.pisar[p.dataset.pisar] = p.checked; calcularImport(); return; }
+    var f = e.target.closest("[data-fila]");
+    if(f){
+      imp.sel[+f.dataset.fila] = f.checked;
+      var fila = imp.filas.filter(function(x){ return x.i === +f.dataset.fila; })[0];
+      if(fila){
+        fila.entra = f.checked;
+        f.closest("tr").className = f.checked ? (fila.existe ? "" : "nueva") : "ignorada";
+      }
+      resumenImport();          // solo los contadores, la tabla no se toca
+    }
+  });
   document.getElementById("btnToggle").addEventListener("click", function(){
     allCollapsed = !allCollapsed;
     collapsed = {};
