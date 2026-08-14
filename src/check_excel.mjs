@@ -66,7 +66,29 @@ ok(rt[1][2] === 'Kit "Pernos" & Caliper <Ford> Ecosport', "comillas, & y <> sobr
 ok(rt[2][0] === "6811 + TS-30023", "el SKU combo se mantiene entero");
 unlinkSync(tmp);
 
-/* ---------- 2. export de publicaciones de Mercado Libre ---------- */
+/* ---------- 2. las columnas se detectan por NOMBRE, no por posición ---------- */
+{
+  // mismas columnas, orden distinto, con basura en el medio y nombres variados
+  const revuelto = [
+    ["Notas", "STATUS", "Precio", "TITLE", "FAMILY_ID", "STOCK_FULL", "sku", "Stock_Flex", "item_id"],
+    ["x", "Activa", "1000", "Bomba de freno", "77", "2", "K-7806", "5", "MLA1493593951"],
+  ];
+  const m = api.mapearColumnas(revuelto, 0, "pub");
+  ok(m.mla === 8, `MLA en la última columna, lo encuentra igual (col ${m.mla})`);
+  ok(m.sku === 6 && m.title === 3 && m.estado === 1 && m.link === 4,
+    "SKU, título, estado y agrupador ubicados por nombre");
+  ok(m.stock === 7, `stock = Stock_Flex (${m.stock}), no STOCK_FULL (5)`);
+  ok(api.mapearColumnas([["ITEM_ID", "SKU", "STOCK_FULL"]], 0, "pub").stock === -1,
+    "si solo hay STOCK_FULL prefiere no mapear stock antes que tomar el de Full");
+
+  // nombres parecidos pero no idénticos
+  const variantes = [["Código de producto", "Descripción", "Stock actual"], ["A-1", "Bomba", "4"]];
+  const v = api.mapearColumnas(variantes, 0, "sku");
+  ok(v.sku === 0 && v.stock === 2 && v.title === 1,
+    "aguanta nombres aproximados: «Código de producto», «Stock actual»");
+}
+
+/* ---------- 3. export de publicaciones de Mercado Libre ---------- */
 try {
   const hojas = await abrir(readFileSync("C:/Users/PC/Downloads/Publicaciones-2026_08_12-11_27.xlsx"));
   const h = hojas.reduce((a, b) => (b.filas.length > a.filas.length ? b : a));
@@ -88,7 +110,7 @@ try {
   else throw e;
 }
 
-/* ---------- 3. planilla de stock del cliente ---------- */
+/* ---------- 4. planilla de stock del cliente ---------- */
 try {
   const hojas = await abrir(readFileSync("C:/Users/PC/Downloads/PROD PEYEN PARA MLIBRE  .xlsx"));
   const h = hojas.find((x) => x.nombre === "productos");

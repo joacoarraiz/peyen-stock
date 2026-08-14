@@ -1177,13 +1177,16 @@
       { k: "sku",    t: "SKU",     alias: ["SKU","CODIGO"] },
       { k: "title",  t: "Título",  alias: ["TITLE","TITULO"] },
       { k: "estado", t: "Estado",  alias: ["STATUS","ESTADO"] },
-      { k: "stock",  t: "Stock",   alias: ["STOCK_FLEX","STOCK","EN MI DEPOSITO"] },
+      // "evitar" frena al match por parecido: sin esto "STOCK" agarra "STOCK_FULL",
+      // que es la mercadería que está en el depósito de ML, no la de Peyen.
+      { k: "stock",  t: "Stock",   alias: ["STOCK_FLEX","EN MI DEPOSITO","STOCK"],
+        evitar: ["FULL","BODEGA"] },
       // sin el agrupador de ML vuelven las unidades fantasma: es estructural, no opcional
       { k: "link",   t: "Agrupador de ML", alias: ["FAMILY_ID"], estructural: true }
     ],
     sku: [
       { k: "sku",   t: "SKU",   alias: ["CODIGO","SKU"], clave: true },
-      { k: "stock", t: "Stock", alias: ["STOCK"], ultima: true },
+      { k: "stock", t: "Stock", alias: ["STOCK"], ultima: true, evitar: ["PRECIO","LISTA"] },
       { k: "title", t: "Descripción", alias: ["DESCRIPCION 1","DESCRIPCION"] }
     ]
   };
@@ -1221,23 +1224,47 @@
     document.body.classList.add("locked");
   }
 
-  // Adivina qué columna es cada campo. Pura a propósito: se prueba sin navegador.
+  /* Adivina qué columna es cada campo POR EL NOMBRE del encabezado, nunca por
+     posición: los archivos cambian el orden de las columnas entre exports.
+     Pura a propósito, para poder probarla sin navegador. */
   function mapearColumnas(filas, head, tipo){
     var hdr = (filas[head] || []).map(normal), mapa = {};
+
+    function prohibido(c, j){
+      return (c.evitar || []).some(function(v){ return hdr[j].indexOf(v) >= 0; });
+    }
+    function conDatos(j){
+      for(var f = head + 1; f < filas.length; f++){
+        var fila = filas[f];
+        if(fila && String(fila[j] == null ? "" : fila[j]).trim() !== "") return true;
+      }
+      return false;
+    }
+
     CAMPOS[tipo].forEach(function(c){
-      var i = -1;
+      var i = -1, k, j;
+
       // "última columna con datos": el archivo del cliente agrega una por fecha
       // ("STOCK", "14-3 stock", "3/8 stock"...) y la buena es la última cargada.
       if(c.ultima){
-        for(var j = hdr.length - 1; j >= 0 && i < 0; j--){
-          if(!c.alias.some(function(a){ return hdr[j].indexOf(a) >= 0; })) continue;
-          for(var f = head + 1; f < filas.length; f++){
-            var fila = filas[f];
-            if(fila && String(fila[j] == null ? "" : fila[j]).trim() !== ""){ i = j; break; }
-          }
+        for(j = hdr.length - 1; j >= 0 && i < 0; j--){
+          if(prohibido(c, j)) continue;
+          if(c.alias.some(function(a){ return hdr[j].indexOf(a) >= 0; }) && conDatos(j)) i = j;
         }
       }
-      for(var k = 0; k < c.alias.length && i < 0; k++) i = hdr.indexOf(c.alias[k]);
+
+      // 1) nombre exacto, respetando el orden de preferencia de los alias
+      for(k = 0; k < c.alias.length && i < 0; k++){
+        j = hdr.indexOf(c.alias[k]);
+        if(j >= 0 && !prohibido(c, j)) i = j;
+      }
+      // 2) si no hubo exacto, el encabezado que contenga el alias: aguanta
+      //    "SKU / Código", "Stock actual" y demás variantes de nombre
+      for(k = 0; k < c.alias.length && i < 0; k++){
+        for(j = 0; j < hdr.length && i < 0; j++){
+          if(hdr[j] && hdr[j].indexOf(c.alias[k]) >= 0 && !prohibido(c, j)) i = j;
+        }
+      }
       mapa[c.k] = i;
     });
     return mapa;
