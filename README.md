@@ -65,8 +65,12 @@ sincronizadas y con 7 unidades las dos muestran 7; `K-7806/S` tiene 4 publicacio
 
 El stock que está en el depósito de Mercado Libre se maneja en su propia pestaña. **No entra en
 el reparto** —no está en el galpón de Peyen— pero **sí suma al total del SKU**, porque se vende
-igual. La pestaña lista las publicaciones que ya tienen Full; para cargarle Full a cualquier
-otra, se la busca por MLA, SKU o título.
+igual.
+
+La pestaña lista las publicaciones que hoy tienen Full, con el número editable y, al lado, cuánto
+tienen en depósito para comparar. **+ Agregar a Full** abre el buscador de publicaciones que
+todavía no están (por MLA, SKU o título): al elegir una entra con 1 y el cursor queda en el
+número para escribir la cantidad real. La **✕** de cada fila la saca de Full.
 
 ### Combos que no se pueden calcular
 

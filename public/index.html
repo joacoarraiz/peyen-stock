@@ -298,6 +298,21 @@
   </div>
 </div>
 
+<div class="modal" id="mFull" hidden>
+  <div class="box" style="width:min(760px,100%)">
+    <h2>Agregar publicación a Full <small>Elegí cuál está en el depósito de Mercado Libre</small></h2>
+    <div class="body">
+      <input type="search" id="fullBuscar" placeholder="Buscar por MLA, SKU o título…"
+             style="width:100%;padding:10px 12px;border:1px solid var(--line);border-radius:8px">
+      <div class="previa" id="fullLista" style="max-height:360px;margin-top:12px"></div>
+    </div>
+    <div class="foot2">
+      <span class="hint" id="fullNota"></span>
+      <button class="btn btn-line" id="fullCancel">Cerrar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="mNuevo" hidden>
   <div class="box" style="width:min(560px,100%)">
     <h2 id="nuevoTitulo">Agregar publicación</h2>
@@ -691,6 +706,57 @@
     kpis();
   }
 
+  /* ---------- alta y baja en Full ---------- */
+  function abrirFull(){
+    document.getElementById("fullBuscar").value = "";
+    dibujarFullLista();
+    document.getElementById("mFull").hidden = false;
+    document.body.classList.add("locked");
+    document.getElementById("fullBuscar").focus();
+  }
+
+  function dibujarFullLista(){
+    var q = document.getElementById("fullBuscar").value.trim().toLowerCase();
+    // solo las que todavía no están en Full: las que ya están se editan en la tabla
+    var libres = state.rows.filter(function(r){
+      if(n(r.full) > 0) return false;
+      return !q || (r.mla + " " + r.sku + " " + r.title).toLowerCase().indexOf(q) >= 0;
+    }).sort(function(a, b){ return natCmp(a.sku, b.sku); });
+
+    document.getElementById("fullNota").textContent =
+      libres.length + (libres.length === 1 ? " publicación" : " publicaciones") + " sin stock en Full";
+
+    document.getElementById("fullLista").innerHTML = libres.length
+      ? "<table><tbody>" + libres.slice(0, 300).map(function(r){
+          return '<tr data-add="' + esc(r.id) + '" style="cursor:pointer">' +
+            '<td><span class="mla">' + esc(r.mla) + "</span></td>" +
+            "<td><b>" + esc(r.sku) + "</b></td>" +
+            '<td class="desc">' + esc(r.title) + "</td>" +
+            '<td class="desc">depósito: ' + n(r.stock) + "</td>" +
+            '<td><button class="btn btn-line btn-sm">Agregar</button></td></tr>';
+        }).join("") + "</tbody></table>"
+      : '<div class="empty">No hay publicaciones sin Full que coincidan.</div>';
+  }
+
+  function cerrarFull(){
+    document.getElementById("mFull").hidden = true;
+    document.body.classList.remove("locked");
+  }
+
+  // Entra con 1 y queda el cursor en el número para escribir la cantidad real.
+  function sumarAFull(id){
+    var r = find(id);
+    if(!r) return;
+    r.full = 1;
+    cerrarFull();
+    markDirty();
+    render();
+    var inp = document.querySelector('tr.pub[data-id="' +
+      (window.CSS && CSS.escape ? CSS.escape(id) : id) + '"] [data-full]');
+    if(inp){ inp.focus(); inp.select(); inp.scrollIntoView({ block: "center" }); }
+    toast("Agregada a Full. Escribí cuántas unidades hay.");
+  }
+
   /* La mercadería que está en el depósito de Mercado Libre. No entra en el reparto
      —no está en el galpón de Peyen— pero sí se vende, así que suma al total del SKU. */
   function renderFull(){
@@ -706,12 +772,12 @@
 
     var h = '<table><thead><tr><th>Publicación</th><th>SKU</th><th>Título</th>' +
       '<th style="text-align:right">En Full</th>' +
-      '<th style="text-align:right">En depósito</th><th>Estado</th></tr></thead><tbody>';
+      '<th style="text-align:right">En depósito</th><th>Estado</th><th></th></tr></thead><tbody>';
 
     if(!lista.length){
-      h += '<tr><td colspan="6" class="empty">' + (q
+      h += '<tr><td colspan="7" class="empty">' + (q
         ? "Ninguna publicación coincide con la búsqueda."
-        : "No hay publicaciones con stock en Full.<br>Buscá una por MLA, SKU o título para cargarle stock.") +
+        : "No hay publicaciones con stock en Full.<br>Usá <b>+ Agregar a Full</b> para sumar una.") +
         "</td></tr>";
     }
     lista.forEach(function(r){
@@ -722,7 +788,9 @@
         '<td class="desc">' + esc(r.title) + "</td>" +
         '<td style="text-align:right"><input class="stk" type="number" min="0" data-full value="' + n(r.full) + '"></td>' +
         '<td class="rep">' + n(r.stock) + "</td>" +
-        '<td>' + (off ? '<span class="chip c-count">INACTIVA</span>' : '<span class="chip c-var">ACTIVA</span>') +
+        '<td>' + (off ? '<span class="chip c-count">INACTIVA</span>' : '<span class="chip c-var">ACTIVA</span>') + "</td>" +
+        '<td>' + (n(r.full) > 0
+          ? '<button class="del" data-act="sacarFull" title="Sacar de Full">✕</button>' : "") +
         "</td></tr>";
     });
 
@@ -874,6 +942,16 @@
       if(!confirm("¿Eliminar el SKU " + sku + " y sus " + count + " publicaciones?")) return;
       state.rows = state.rows.filter(function(r){ return r.sku !== sku; });
       markDirty(); render(); return;
+    }
+    if(act === "sacarFull"){
+      var fr = find(e.target.closest("tr.pub").dataset.id);
+      if(fr){
+        var tenia = n(fr.full);
+        fr.full = 0;
+        markDirty(); render();
+        toast(fr.mla + " sacada de Full" + (tenia ? " (tenía " + tenia + ")" : ""));
+      }
+      return;
     }
     if(act === "delRow"){
       var tr = e.target.closest("tr.pub");
@@ -1651,14 +1729,21 @@
       var txt = vista === "sku" ? "+ Agregar SKU" : "+ Agregar publicación";
       document.getElementById("btnAddSku").textContent = txt;
       document.getElementById("btnAddSku2").textContent = txt;
-      ["btnAddSku","btnAddSku2"].forEach(function(id){
-        document.getElementById(id).style.display = vista === "full" ? "none" : "";
-      });
+      if(vista === "full"){
+        document.getElementById("btnAddSku").textContent = "+ Agregar a Full";
+        document.getElementById("btnAddSku2").textContent = "+ Agregar a Full";
+      }
       document.getElementById("q").placeholder = vista === "full"
         ? "Buscá la publicación a la que quieras cargarle stock en Full…"
         : "Buscar por SKU, MLA o título…";
       render();
     });
+  });
+  document.getElementById("fullCancel").addEventListener("click", cerrarFull);
+  document.getElementById("fullBuscar").addEventListener("input", dibujarFullLista);
+  document.getElementById("fullLista").addEventListener("click", function(e){
+    var tr = e.target.closest("[data-add]");
+    if(tr) sumarAFull(tr.dataset.add);
   });
   document.getElementById("btnVisto").addEventListener("click", function(){
     var cuantos = Object.keys(state.skuAt || {}).length;
@@ -1677,8 +1762,11 @@
     if(this.files[0]) cargarExcel(this.files[0]);
     this.value = "";                       // permite volver a subir el mismo archivo
   });
-  document.getElementById("btnAddSku").addEventListener("click", function(){ abrirNuevo(""); });
-  document.getElementById("btnAddSku2").addEventListener("click", function(){ abrirNuevo(""); });
+  ["btnAddSku","btnAddSku2"].forEach(function(id){
+    document.getElementById(id).addEventListener("click", function(){
+      if(vista === "full") abrirFull(); else abrirNuevo("");
+    });
+  });
   document.getElementById("nuevoOk").addEventListener("click", guardarNuevo);
   document.getElementById("nuevoCancel").addEventListener("click", cerrarNuevo);
 
