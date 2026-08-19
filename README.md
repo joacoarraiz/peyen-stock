@@ -6,6 +6,7 @@ Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Tres vis
   publicaciones; el precio baja igual a todas las activas.
 - **Por publicación** — cada MLA con su título, estado y stock, agrupado por SKU.
 - **En Full** — la mercadería que está en el depósito de Mercado Libre, editable aparte.
+- **Ventas** — el historial de ventas, que descuenta stock a partir de la segunda carga.
 
 Los cambios se guardan en el servidor: los ve cualquiera que entre con la clave.
 
@@ -128,6 +129,36 @@ con el grupo cerrado, la misma columna resume cuántas suman (`1 de 2`, `todas`)
 — puede ser la misma mercadería cargada dos veces. Eso lo confirma quien conoce el depósito:
 **un clic en el cartel lo saca**. Si después cambian los números por los que se levantó, el aviso
 vuelve solo, porque ya no es la situación que se revisó.
+
+## Ventas
+
+Una fila por venta: fecha, número, SKU, publicación, título, unidades, envío (Full o ME) y
+estado. Se cargan desde el reporte de **Ventas** de Mercado Libre con el mismo botón que todo
+lo demás, y se pueden agregar, editar y borrar a mano, de a una o varias.
+
+**La primera carga es el histórico y no toca el stock**: la casilla *Descontar estas ventas del
+stock* viene destildada mientras no haya ventas cargadas, y tildada de ahí en más.
+
+**Bajar el mismo archivo dos veces no descuenta dos veces.** El cruce es por número de venta:
+lo ya cargado se ignora. Verificado con el reporte real — reimportarlo da 0 nuevas y 783
+ignoradas, con el botón deshabilitado.
+
+**Devoluciones y cancelaciones se detectan por el estado** (`Devolución…`, `Cancelada…`,
+`Mediación…con reembolso`) y no consumen mercadería. Cada venta recuerda cuánto descontó, así
+que si una venta ya aplicada aparece devuelta en la carga siguiente, **el stock vuelve solo**.
+Borrar una venta también devuelve lo que había descontado.
+
+Trampas del reporte de ML que resuelve solo:
+
+- Las filas **«Paquete de N productos»** son un encabezado sin producto: se descartan. Los
+  productos del paquete vienen después como ventas propias con su número.
+- La **fecha es texto en castellano** (`18 de agosto de 2026 20:45 hs.`). Ordenar el texto crudo
+  miente —alfabéticamente *abril* va antes que *enero*—, así que se convierte a fecha real.
+- El **estado mezcla estados con etiquetas**, por eso se clasifica por substring y no por
+  igualdad.
+
+Sobre el archivo de enero a agosto: 791 filas → **783 ventas** (8 encabezados de paquete),
+819 unidades, 54 devoluciones y 27 canceladas, 117 por Full y 666 por Mercado Envíos.
 
 ## Excel
 

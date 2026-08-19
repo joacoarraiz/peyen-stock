@@ -301,6 +301,21 @@
   </select>
   <button class="btn btn-line solo-sku oculto" id="btnVisto">Marcar revisados</button>
   <button class="btn btn-line" id="btnToggle">Contraer todo</button>
+  <select id="vClase" class="solo-ventas oculto">
+    <option value="">Ventas y devoluciones</option>
+    <option value="venta">Solo ventas</option>
+    <option value="devolucion">Solo devoluciones</option>
+    <option value="cancelada">Solo canceladas</option>
+  </select>
+  <select id="vEnvio" class="solo-ventas oculto">
+    <option value="">Todos los envíos</option>
+    <option value="Full">Solo Full</option>
+    <option value="ME">Solo Mercado Envíos</option>
+  </select>
+  <label class="chk solo-ventas oculto">Desde <input type="date" id="vDesde"></label>
+  <label class="chk solo-ventas oculto">Hasta <input type="date" id="vHasta"></label>
+  <button class="btn btn-line solo-ventas oculto" id="btnAddVenta">+ Agregar venta</button>
+  <button class="btn btn-line solo-ventas oculto" id="btnDelVentas">Borrar seleccionadas</button>
   <button class="btn btn-line" id="btnLinks">Generar links</button>
   <button class="btn btn-line" id="btnAddSku">+ Agregar publicación</button>
 </div>
@@ -311,6 +326,7 @@
   <button class="tab on" data-vista="pub">Por publicación</button>
   <button class="tab" data-vista="sku">Por SKU</button>
   <button class="tab" data-vista="full">En Full</button>
+  <button class="tab" data-vista="ventas">Ventas</button>
 </div>
 
 <div class="wrap">
@@ -336,6 +352,7 @@
           <select id="impTipo">
             <option value="pub">Publicaciones (una fila por MLA)</option>
             <option value="sku">Stock por SKU (sin MLA)</option>
+            <option value="ventas">Reporte de ventas</option>
           </select>
         </div>
       </div>
@@ -345,6 +362,8 @@
 
       <p class="paso">3 · Qué datos pisar</p>
       <div class="campos" id="impCampos"></div>
+      <label class="chk oculto" id="impDescLbl" style="margin-top:8px">
+        <input type="checkbox" id="impDescuenta"> Descontar estas ventas del stock</label>
 
       <p class="paso">4 · Qué filas importar</p>
       <div class="campos" style="grid-template-columns:repeat(auto-fit,minmax(160px,1fr))">
@@ -400,6 +419,42 @@
   </div>
 </div>
 
+<div class="modal" id="mVenta" hidden>
+  <div class="box" style="width:min(620px,100%)">
+    <h2 id="vTitulo">Agregar venta</h2>
+    <div class="body">
+      <div class="campos">
+        <div class="campo"><label>Fecha</label><input id="wFecha" type="date"></div>
+        <div class="campo"><label># de venta</label><input id="wNum" placeholder="2000014599812793"></div>
+        <div class="campo"><label>SKU</label><input id="wSku" placeholder="K-7806"></div>
+        <div class="campo"><label>Publicación (MLA)</label><input id="wMla" placeholder="MLA1493593951"></div>
+      </div>
+      <div class="campos" style="margin-top:8px;grid-template-columns:1fr">
+        <div class="campo"><label>Título</label><input id="wTitulo"></div>
+      </div>
+      <div class="campos" style="margin-top:8px">
+        <div class="campo"><label>Unidades</label><input id="wUnid" type="number" min="1" value="1"></div>
+        <div class="campo"><label>Envío</label>
+          <select id="wEnvio"><option>ME</option><option>Full</option></select></div>
+        <div class="campo"><label>Tipo</label>
+          <select id="wClase">
+            <option value="venta">Venta</option>
+            <option value="devolucion">Devolución</option>
+            <option value="cancelada">Cancelada</option>
+          </select></div>
+      </div>
+      <label class="chk" style="margin-top:10px"><input type="checkbox" id="wDesc" checked>
+        Descontar del stock</label>
+      <p class="hint" style="margin-top:8px">Una devolución o cancelación no descuenta, y si ya
+        había descontado devuelve las unidades al stock del SKU.</p>
+    </div>
+    <div class="foot2">
+      <button class="btn btn-line" id="ventaCancel">Cancelar</button>
+      <button class="btn btn-primary" id="ventaOk">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="mNuevo" hidden>
   <div class="box" style="width:min(560px,100%)">
     <h2 id="nuevoTitulo">Agregar publicación</h2>
@@ -447,7 +502,7 @@
       var raw = localStorage.getItem(KEY);
       if(raw){ var s = JSON.parse(raw); if(s && s.rows && s.rows.length) return s; }
     }catch(e){}
-    return { rows: [], sku: {}, skuAt: {}, rowAt: {}, revisado: {}, savedAt: null };   // los datos reales llegan del servidor
+    return { rows: [], sku: {}, skuAt: {}, rowAt: {}, revisado: {}, ventas: [], savedAt: null };   // los datos reales llegan del servidor
   }
 
   function n(v){ v = parseInt(v,10); return isNaN(v) ? 0 : v; }
@@ -823,9 +878,9 @@
 
   // Precio del SKU = el de sus publicaciones activas, si todas coinciden.
   function precioSku(sku){
-    var v = state.rows.filter(function(r){
-      return r.sku === sku && r.estado === "Activa" && n(r.price);
-    }).map(function(r){ return n(r.price); });
+    var con = state.rows.filter(function(r){ return r.sku === sku && n(r.price); });
+    var act = con.filter(function(r){ return r.estado === "Activa"; });
+    var v = (act.length ? act : con).map(function(r){ return n(r.price); });
     return v.length ? Math.max.apply(null, v) : 0;
   }
 
@@ -1006,9 +1061,253 @@
     kpis();
   }
 
+  /* ================= VENTAS =================
+     Una fila por venta. El export de ML trae además filas "Paquete de N productos",
+     que son un encabezado sin producto: se descartan, los productos del paquete
+     vienen después como ventas propias con su número. */
+
+  var MESES = { enero:0, febrero:1, marzo:2, abril:3, mayo:4, junio:5, julio:6,
+                agosto:7, septiembre:8, setiembre:8, octubre:9, noviembre:10, diciembre:11 };
+
+  // "18 de agosto de 2026 20:45 hs." -> "2026-08-18". Ordenar el texto crudo miente:
+  // alfabéticamente "abril" va antes que "enero".
+  function fechaVenta(txt){
+    var m = String(txt || "").toLowerCase()
+      .match(/(\d{1,2})\s+de\s+([a-záéíóú]+)\s+de\s+(\d{4})/);
+    if(!m) return "";
+    var mes = MESES[m[2].normalize("NFD").replace(/[̀-ͯ]/g, "")];
+    if(mes === undefined) return "";
+    return m[3] + "-" + String(mes + 1).padStart(2, "0") + "-" + String(+m[1]).padStart(2, "0");
+  }
+
+  function fechaLinda(iso){
+    if(!iso) return "";
+    var p = iso.split("-");
+    return p.length === 3 ? p[2] + "/" + p[1] + "/" + p[0] : iso;
+  }
+
+  // El estado mezcla estados reales con etiquetas, así que se clasifica por substring.
+  function claseVenta(estado){
+    var e = normal(estado);
+    if(e.indexOf("CANCEL") >= 0) return "cancelada";
+    if(e.indexOf("DEVOLUC") >= 0 || e.indexOf("REEMBOLS") >= 0) return "devolucion";
+    return "venta";
+  }
+
+  function envioVenta(forma){
+    return normal(forma).indexOf("FULL") >= 0 ? "Full" : "ME";
+  }
+
+  // Solo una venta concretada consume mercadería. Una cancelada o devuelta no,
+  // y si ya se había descontado hay que reponerla.
+  function consume(v){ return v.clase === "venta" ? n(v.unidades) : 0; }
+
+  /* ---------- efecto sobre el stock ---------- */
+  // Cada venta guarda cuánto descontó (v.aplicado). Si vuelve a importarse igual no
+  // pasa nada; si cambió de estado, se ajusta solo la diferencia.
+  function aplicarVentas(){
+    if(!state.sku) state.sku = {};
+    var tocados = {}, sinSku = 0;
+    (state.ventas || []).forEach(function(v){
+      if(!v.descuenta) return;                 // el histórico no toca stock
+      var debe = consume(v), ya = n(v.aplicado);
+      if(debe === ya) return;
+      if(state.sku[v.sku] === undefined){ sinSku++; v.aplicado = debe; return; }
+      state.sku[v.sku] = n(state.sku[v.sku]) - (debe - ya);
+      if(state.sku[v.sku] < 0) state.sku[v.sku] = 0;
+      v.aplicado = debe;
+      tocados[v.sku] = true;
+    });
+    var cuantos = Object.keys(tocados).length;
+    if(cuantos) repartir();
+    return { skus: cuantos, sinSku: sinSku };
+  }
+
+  function ventaId(){
+    return "v" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  /* ---------- vista ---------- */
+  function renderVentas(){
+    var q = document.getElementById("q").value.trim().toLowerCase();
+    var fClase = document.getElementById("vClase").value;
+    var fEnvio = document.getElementById("vEnvio").value;
+    var desde = document.getElementById("vDesde").value;
+    var hasta = document.getElementById("vHasta").value;
+
+    var lista = (state.ventas || []).filter(function(v){
+      if(fClase && v.clase !== fClase) return false;
+      if(fEnvio && v.envio !== fEnvio) return false;
+      if(desde && v.fecha < desde) return false;
+      if(hasta && v.fecha > hasta) return false;
+      if(q && (v.num + " " + v.sku + " " + v.mla + " " + v.title).toLowerCase().indexOf(q) < 0) return false;
+      return true;
+    });
+    lista.sort(function(a, b){ return a.fecha < b.fecha ? 1 : a.fecha > b.fecha ? -1 : 0; });
+
+    var unidades = lista.reduce(function(s, v){ return s + consume(v); }, 0);
+    var dev = lista.filter(function(v){ return v.clase !== "venta"; }).length;
+
+    var h = '<table><thead><tr><th class="sumcell"><input type="checkbox" id="vTodas" ' +
+      'title="Seleccionar todas las visibles"></th>' +
+      "<th>Fecha</th><th># de venta</th><th>SKU</th><th>Publicación</th><th>Título</th>" +
+      '<th style="text-align:right">Unid.</th><th>Envío</th><th>Estado</th><th></th></tr></thead><tbody>';
+
+    if(!lista.length){
+      h += '<tr><td colspan="10" class="empty">' +
+        ((state.ventas || []).length ? "Ninguna venta coincide con los filtros."
+          : "Todavía no hay ventas cargadas.<br>Usá <b>Cargar Excel</b> con el reporte de ventas de Mercado Libre.") +
+        "</td></tr>";
+    }
+
+    lista.slice(0, 1500).forEach(function(v){
+      var col = v.clase === "venta" ? "c-var" : v.clase === "devolucion" ? "c-warn" : "c-zero";
+      h += '<tr class="pub" data-vid="' + esc(v.id) + '">' +
+        '<td class="sumcell"><input type="checkbox" class="vsel"></td>' +
+        '<td style="white-space:nowrap">' + fechaLinda(v.fecha) + "</td>" +
+        '<td><span class="mla">' + esc(v.num) + "</span></td>" +
+        "<td><b>" + esc(v.sku) + "</b></td>" +
+        '<td><span class="mla">' + esc(v.mla) + "</span></td>" +
+        '<td class="desc">' + esc(v.title) + "</td>" +
+        '<td class="rep">' + n(v.unidades) + "</td>" +
+        '<td><span class="chip ' + (v.envio === "Full" ? "c-full" : "c-count") + '">' + esc(v.envio) + "</span></td>" +
+        '<td><span class="chip ' + col + '" title="' + esc(v.estado) + '">' + v.clase.toUpperCase() + "</span>" +
+          (v.descuenta ? "" : ' <span class="chip c-count" title="Histórico: no tocó el stock">HISTÓRICO</span>') + "</td>" +
+        '<td><button class="del" data-act="editVenta" title="Editar">✎</button>' +
+          '<button class="del" data-act="delVenta" title="Eliminar">✕</button></td></tr>';
+    });
+
+    document.getElementById("app").innerHTML = h + "</tbody></table>";
+    document.getElementById("shown").textContent =
+      lista.length + " ventas · " + unidades + " unidades vendidas" +
+      (dev ? " · " + dev + " devueltas o canceladas" : "") +
+      (lista.length > 1500 ? " (se ven las primeras 1500)" : "");
+    kpis();
+  }
+
+  /* ---------- alta y edición a mano ---------- */
+  var ventaId2 = null;
+
+  function abrirVenta(id){
+    ventaId2 = id || null;
+    var v = id ? (state.ventas || []).filter(function(x){ return x.id === id; })[0] : null;
+    document.getElementById("vTitulo").textContent = v ? "Editar venta " + v.num : "Agregar venta";
+    document.getElementById("wFecha").value = v ? v.fecha : new Date().toISOString().slice(0, 10);
+    document.getElementById("wNum").value = v ? v.num : "";
+    document.getElementById("wSku").value = v ? v.sku : "";
+    document.getElementById("wMla").value = v ? v.mla : "";
+    document.getElementById("wTitulo").value = v ? v.title : "";
+    document.getElementById("wUnid").value = v ? n(v.unidades) : 1;
+    document.getElementById("wEnvio").value = v ? v.envio : "ME";
+    document.getElementById("wClase").value = v ? v.clase : "venta";
+    document.getElementById("wDesc").checked = v ? !!v.descuenta : true;
+    document.getElementById("mVenta").hidden = false;
+    document.body.classList.add("locked");
+    document.getElementById("wNum").focus();
+  }
+
+  function cerrarVenta(){
+    document.getElementById("mVenta").hidden = true;
+    document.body.classList.remove("locked");
+    ventaId2 = null;
+  }
+
+  function guardarVenta(){
+    var num = document.getElementById("wNum").value.trim();
+    var sku = document.getElementById("wSku").value.trim();
+    if(!num || !sku){ toast("Faltan el número de venta y el SKU"); return; }
+    var repe = (state.ventas || []).filter(function(x){
+      return x.num === num && x.id !== ventaId2;
+    })[0];
+    if(repe){ toast("Ya hay una venta con el número " + num); return; }
+
+    var v = ventaId2 ? (state.ventas || []).filter(function(x){ return x.id === ventaId2; })[0] : null;
+    if(!v){ v = { id: ventaId(), aplicado: 0 }; state.ventas.push(v); }
+    v.fecha = document.getElementById("wFecha").value;
+    v.num = num;
+    v.sku = sku;
+    v.mla = document.getElementById("wMla").value.trim();
+    v.title = document.getElementById("wTitulo").value.trim();
+    v.unidades = n(document.getElementById("wUnid").value);
+    v.envio = document.getElementById("wEnvio").value;
+    v.clase = document.getElementById("wClase").value;
+    v.estado = v.estado || v.clase;
+    v.descuenta = document.getElementById("wDesc").checked;
+
+    var r = aplicarVentas();
+    cerrarVenta();
+    markDirty(); render();
+    toast(r.skus ? "Guardada. Se ajustó el stock de " + r.skus + " SKU." : "Venta guardada.");
+  }
+
+  function borrarVentas(ids){
+    if(!ids.length) return;
+    if(!confirm("Se eliminan " + ids.length + " ventas. " +
+      "Si alguna había descontado stock, se devuelve.")) return;
+    // devolver lo que habían descontado antes de sacarlas
+    state.ventas.forEach(function(v){
+      if(ids.indexOf(v.id) < 0 || !n(v.aplicado)) return;
+      if(state.sku[v.sku] !== undefined) state.sku[v.sku] = n(state.sku[v.sku]) + n(v.aplicado);
+    });
+    state.ventas = state.ventas.filter(function(v){ return ids.indexOf(v.id) < 0; });
+    repartir();
+    markDirty(); render();
+    toast(ids.length + " ventas eliminadas.");
+  }
+
+  /* ---------- importación ---------- */
+  // Reconoce el reporte de ventas por sus encabezados y lo cruza contra lo cargado:
+  // el número de venta es único, así que bajar el mismo archivo dos veces no descuenta
+  // dos veces. Si una venta cambió de estado (se devolvió), se actualiza y repone.
+  function importarVentas(filas, head, m, descontar){
+    var porNum = {};
+    (state.ventas || []).forEach(function(v){ porNum[v.num] = v; });
+    var nuevas = 0, cambiadas = 0, iguales = 0, saltadas = 0;
+
+    for(var i = head + 1; i < filas.length; i++){
+      var r = filas[i];
+      if(!r) continue;
+      var num = String(r[m.num] == null ? "" : r[m.num]).trim();
+      var sku = String(m.sku >= 0 ? (r[m.sku] == null ? "" : r[m.sku]) : "").trim();
+      var mla = String(m.mla >= 0 ? (r[m.mla] == null ? "" : r[m.mla]) : "").trim();
+      // "Paquete de N productos": encabezado del paquete, sin producto
+      if(!num || (!sku && !mla)){ if(num) saltadas++; continue; }
+
+      var estado = String(m.estado >= 0 ? (r[m.estado] == null ? "" : r[m.estado]) : "").trim();
+      var datos = {
+        fecha: fechaVenta(r[m.fecha]),
+        num: num, sku: sku, mla: mla,
+        title: String(m.title >= 0 ? (r[m.title] == null ? "" : r[m.title]) : "").trim(),
+        unidades: n(r[m.unid]) || 1,
+        envio: envioVenta(m.envio >= 0 ? r[m.envio] : ""),
+        estado: estado,
+        clase: claseVenta(estado)
+      };
+
+      var ya = porNum[num];
+      if(!ya){
+        datos.id = ventaId();
+        datos.aplicado = 0;
+        datos.descuenta = descontar;
+        state.ventas.push(datos);
+        porNum[num] = datos;
+        nuevas++;
+      } else if(ya.clase !== datos.clase || n(ya.unidades) !== n(datos.unidades)){
+        ya.clase = datos.clase;
+        ya.estado = datos.estado;
+        ya.unidades = datos.unidades;
+        cambiadas++;
+      } else {
+        iguales++;
+      }
+    }
+    return { nuevas: nuevas, cambiadas: cambiadas, iguales: iguales, saltadas: saltadas };
+  }
+
   function render(){
     if(vista === "sku"){ asegurarSku(); renderSku(); return; }
     if(vista === "full"){ renderFull(); return; }
+    if(vista === "ventas"){ renderVentas(); return; }
     var gs = filtered();
     var head = '<table><thead><tr>' +
       "<th>SKU / Publicación</th><th>Título</th><th>Estado</th>" +
@@ -1073,8 +1372,9 @@
     var pre = e.target.closest("[data-sku-precio]");
     if(pre){
       var skuP = e.target.closest("tr.skurow").dataset.sku;
+      // también a las inactivas y sin stock: quedaron con precio 0 y hay que corregirlas
       state.rows.forEach(function(r){
-        if(r.sku === skuP && r.estado === "Activa") r.price = n(pre.value);
+        if(r.sku === skuP) r.price = n(pre.value);
       });
       markDirty();
       return;
@@ -1158,6 +1458,14 @@
     var tb = e.target.closest("tbody"); var sku = tb ? tb.dataset.sku : null;
     var act = b.dataset.act;
 
+    if(act === "editVenta"){
+      abrirVenta(e.target.closest("tr").dataset.vid);
+      return;
+    }
+    if(act === "delVenta"){
+      borrarVentas([e.target.closest("tr").dataset.vid]);
+      return;
+    }
     if(act === "link"){
       abrirLink(e.target.closest("tr.pub").dataset.id);
       return;
@@ -1392,7 +1700,8 @@
   function empujar(pisar){
     setState("Guardando…");
     api("PUT", { rows: state.rows, sku: state.sku || {}, skuAt: state.skuAt || {},
-      rowAt: state.rowAt || {}, revisado: state.revisado || {}, base: pisar || base })
+      rowAt: state.rowAt || {}, revisado: state.revisado || {}, ventas: state.ventas || [],
+      base: pisar || base })
       .then(function(res){
         if(res.status === 409){
           res.json().then(function(d){
@@ -1443,7 +1752,7 @@
         var venia = base;
         base = d.savedAt;
         state = { rows: d.rows, sku: d.sku || {}, skuAt: d.skuAt || {}, rowAt: d.rowAt || {},
-          revisado: d.revisado || {}, savedAt: d.savedAt };
+          revisado: d.revisado || {}, ventas: d.ventas || [], savedAt: d.savedAt };
         dirty = false;
         aviso(false);
         render();
@@ -1725,6 +2034,16 @@
       // sin el agrupador de ML vuelven las unidades fantasma: es estructural, no opcional
       { k: "link",   t: "Agrupador de ML", alias: ["FAMILY_ID"], estructural: true }
     ],
+    ventas: [
+      { k: "num",    t: "# de venta", alias: ["N DE VENTA","# DE VENTA","NUMERO DE VENTA"], clave: true },
+      { k: "fecha",  t: "Fecha",      alias: ["FECHA DE VENTA","FECHA"] },
+      { k: "sku",    t: "SKU",        alias: ["SKU"] },
+      { k: "mla",    t: "Publicación", alias: ["N DE PUBLICACION","# DE PUBLICACION","ITEM_ID"] },
+      { k: "title",  t: "Título",     alias: ["TITULO DE LA PUBLICACION","TITULO","TITLE"] },
+      { k: "unid",   t: "Unidades",   alias: ["UNIDADES"] },
+      { k: "envio",  t: "Envío",      alias: ["FORMA DE ENTREGA"] },
+      { k: "estado", t: "Estado",     alias: ["ESTADO"], evitar: ["DESCRIPCION"] }
+    ],
     sku: [
       { k: "sku",   t: "SKU",   alias: ["CODIGO","SKU"], clave: true },
       { k: "stock", t: "Stock", alias: ["STOCK"], ultima: true, evitar: ["PRECIO","LISTA"] },
@@ -1755,10 +2074,9 @@
     imp.hoja = mayor;
     sel.value = mayor;
     var h = hojas[mayor];
-    var tieneMla = (h.filas[encabezado(h.filas)] || []).some(function(x){
-      return /ITEM_ID|MLA|PUBLICACI/i.test(String(x || ""));
-    });
-    imp.tipo = tieneMla ? "pub" : "sku";
+    var hdr0 = (h.filas[encabezado(h.filas)] || []).map(normal).join(" | ");
+    var esVenta = hdr0.indexOf("DE VENTA") >= 0 && hdr0.indexOf("UNIDADES") >= 0;
+    imp.tipo = esVenta ? "ventas" : (/ITEM_ID|MLA|PUBLICACI/.test(hdr0) ? "pub" : "sku");
     document.getElementById("impTipo").value = imp.tipo;
 
     autoMapear();
@@ -1837,6 +2155,11 @@
       document.querySelector('[data-mapa="' + c.k + '"]').value = imp.mapa[c.k];
     });
 
+    // el primer archivo es el histórico y no toca stock; de ahí en más sí
+    var esVentas = imp.tipo === "ventas";
+    document.getElementById("impDescLbl").classList.toggle("oculto", !esVentas);
+    if(esVentas) document.getElementById("impDescuenta").checked = (state.ventas || []).length > 0;
+
     document.getElementById("impCampos").innerHTML = CAMPOS[imp.tipo]
       .filter(function(c){ return !c.clave && !c.estructural; }).map(function(c){
         var hay = imp.mapa[c.k] >= 0;
@@ -1848,6 +2171,7 @@
   }
 
   function calcularImport(){
+    if(imp.tipo === "ventas") return calcularVentas();
     var h = imp.hojas[imp.hoja], m = imp.mapa;
     // una publicación con variantes repite el MLA con distinto SKU: la clave lleva los dos
     var porMla = {}, porSku = {};
@@ -1934,7 +2258,111 @@
     b.disabled = !ent.length;
   }
 
+  // Vista previa del reporte de ventas: cruza por número de venta contra lo ya
+  // cargado para que bajar el mismo archivo dos veces no descuente dos veces.
+  function calcularVentas(){
+    var h = imp.hojas[imp.hoja], m = imp.mapa;
+    var porNum = {};
+    (state.ventas || []).forEach(function(v){ porNum[v.num] = v; });
+
+    imp.filas = [];
+    for(var i = imp.head + 1; i < h.filas.length; i++){
+      var r = h.filas[i];
+      if(!r) continue;
+      var val = function(k){ return m[k] >= 0 ? String(r[m[k]] == null ? "" : r[m[k]]).trim() : ""; };
+      var num = val("num"), sku = val("sku"), mla = val("mla");
+      if(!num) continue;
+      var estado = val("estado");
+      var motivo = "";
+      // el encabezado "Paquete de N productos" no trae producto: sus items vienen aparte
+      if(!sku && !mla) motivo = "encabezado de paquete";
+      var ya = porNum[num];
+      var clase = claseVenta(estado);
+      imp.filas.push({
+        i: i, num: num, sku: sku, mla: mla, title: val("title"),
+        fecha: fechaVenta(val("fecha")), unidades: n(r[m.unid]) || 1,
+        envio: envioVenta(val("envio")), estado: estado, clase: clase,
+        existe: !!ya,
+        cambia: !!ya && (ya.clase !== clase || n(ya.unidades) !== (n(r[m.unid]) || 1)),
+        motivo: motivo
+      });
+    }
+
+    imp.filas.forEach(function(f){
+      f.entra = !f.motivo && (f.existe ? f.cambia : true);
+      if(imp.sel[f.i] === false) f.entra = false;
+      if(imp.sel[f.i] === true && !f.motivo) f.entra = true;
+    });
+
+    var ent = imp.filas.filter(function(f){ return f.entra; });
+    var nuevas = ent.filter(function(f){ return !f.existe; }).length;
+    var repetidas = imp.filas.filter(function(f){ return f.existe && !f.cambia; }).length;
+
+    document.getElementById("impResumen").innerHTML =
+      '<div class="rcard new"><b>' + nuevas + "</b>ventas nuevas</div>" +
+      '<div class="rcard"><b>' + (ent.length - nuevas) + "</b>cambiaron de estado</div>" +
+      '<div class="rcard skip"><b>' + repetidas + "</b>ya cargadas, se ignoran</div>";
+
+    document.getElementById("impPrevia").innerHTML =
+      "<table><thead><tr><th></th><th>Fecha</th><th># de venta</th><th>SKU</th>" +
+      "<th>Unid.</th><th>Envío</th><th>Estado</th><th></th></tr></thead><tbody>" +
+      imp.filas.slice(0, 400).map(function(f){
+        return '<tr class="' + (f.entra ? (f.existe ? "" : "nueva") : "ignorada") + '">' +
+          '<td><input type="checkbox" data-fila="' + f.i + '"' + (f.entra ? " checked" : "") +
+            (f.motivo ? " disabled" : "") + "></td>" +
+          "<td>" + esc(fechaLinda(f.fecha)) + "</td><td>" + esc(f.num) + "</td>" +
+          "<td>" + esc(f.sku) + "</td><td>" + f.unidades + "</td><td>" + esc(f.envio) + "</td>" +
+          "<td>" + esc(f.estado.slice(0, 34)) + "</td>" +
+          '<td class="hint">' + (f.motivo || (f.cambia ? "cambió de estado"
+            : f.existe ? "ya cargada" : "nueva")) + "</td></tr>";
+      }).join("") + "</tbody></table>";
+
+    document.getElementById("impNota").textContent =
+      imp.filas.length > 400 ? "Se ven las primeras 400 de " + imp.filas.length + " filas" : "";
+    var b = document.getElementById("impOk");
+    b.textContent = "Importar " + ent.length + " ventas";
+    b.disabled = !ent.length;
+  }
+
+  function aplicarVentasImport(){
+    var ent = imp.filas.filter(function(f){ return f.entra; });
+    var descontar = document.getElementById("impDescuenta").checked;
+    if(!state.ventas) state.ventas = [];
+    var porNum = {};
+    state.ventas.forEach(function(v){ porNum[v.num] = v; });
+    var nuevas = 0, cambiadas = 0;
+
+    ent.forEach(function(f){
+      var ya = porNum[f.num];
+      if(!ya){
+        state.ventas.push({
+          id: ventaId(), fecha: f.fecha, num: f.num, sku: f.sku, mla: f.mla, title: f.title,
+          unidades: f.unidades, envio: f.envio, estado: f.estado, clase: f.clase,
+          descuenta: descontar, aplicado: 0
+        });
+        nuevas++;
+      } else {
+        ya.clase = f.clase; ya.estado = f.estado; ya.unidades = f.unidades;
+        cambiadas++;
+      }
+    });
+
+    var r = aplicarVentas();
+    cerrarImport();
+    markDirty();
+    vista = "ventas";
+    document.querySelectorAll(".tab").forEach(function(x){
+      x.classList.toggle("on", x.dataset.vista === "ventas");
+    });
+    document.querySelectorAll(".solo-ventas").forEach(function(x){ x.classList.remove("oculto"); });
+    render();
+    toast(nuevas + " ventas nuevas · " + cambiadas + " actualizadas" +
+      (descontar ? " · stock ajustado en " + r.skus + " SKU" : " · sin tocar el stock") +
+      (r.sinSku ? " · " + r.sinSku + " sin SKU en el catálogo" : ""));
+  }
+
   function aplicarImport(){
+    if(imp.tipo === "ventas") return aplicarVentasImport();
     var ent = imp.filas.filter(function(f){ return f.entra; });
     var porMla = {};
     state.rows.forEach(function(r){
@@ -1950,7 +2378,7 @@
         state.sku[f.sku] = n(f.stock);
         // el precio del SKU baja a sus publicaciones activas
         if(imp.pisar.price && f.price !== "") state.rows.forEach(function(r){
-          if(r.sku === f.sku && r.estado === "Activa") r.price = n(f.price);
+          if(r.sku === f.sku) r.price = n(f.price);
         });
         if(f.existe) act++; else nue++;
         return;
@@ -2059,7 +2487,7 @@
   }
 
   /* ---------- eventos ---------- */
-  ["q","fEstado","fZero","fMulti","fRev","fPend","fCambio","ordenSku"].forEach(function(id){
+  ["q","fEstado","fZero","fMulti","fRev","fPend","fCambio","ordenSku","vClase","vEnvio","vDesde","vHasta"].forEach(function(id){
     document.getElementById(id).addEventListener("input", render);
   });
   document.querySelectorAll(".tab").forEach(function(b){
@@ -2071,6 +2499,10 @@
         .forEach(function(x){ x.classList.toggle("oculto", vista !== "pub"); });
       document.querySelectorAll(".solo-sku")
         .forEach(function(x){ x.classList.toggle("oculto", vista !== "sku"); });
+      document.querySelectorAll(".solo-ventas")
+        .forEach(function(x){ x.classList.toggle("oculto", vista !== "ventas"); });
+      document.getElementById("btnAddSku").classList.toggle("oculto", vista === "ventas");
+      document.getElementById("btnAddSku2").classList.toggle("oculto", vista === "ventas");
       var txt = vista === "sku" ? "+ Agregar SKU" : "+ Agregar publicación";
       document.getElementById("btnAddSku").textContent = txt;
       document.getElementById("btnAddSku2").textContent = txt;
@@ -2109,6 +2541,21 @@
     document.getElementById("fPend").checked = false;
     markDirty(); render();
     toast("Listo. La próxima carga vuelve a marcar lo que cambie.");
+  });
+  document.getElementById("btnAddVenta").addEventListener("click", function(){ abrirVenta(null); });
+  document.getElementById("ventaCancel").addEventListener("click", cerrarVenta);
+  document.getElementById("ventaOk").addEventListener("click", guardarVenta);
+  document.getElementById("btnDelVentas").addEventListener("click", function(){
+    var ids = [].slice.call(document.querySelectorAll("#app .vsel:checked"))
+      .map(function(c){ return c.closest("tr").dataset.vid; });
+    if(!ids.length){ toast("No hay ventas seleccionadas"); return; }
+    borrarVentas(ids);
+  });
+  document.getElementById("app").addEventListener("change", function(e){
+    if(e.target.id === "vTodas"){
+      var v = e.target.checked;
+      document.querySelectorAll("#app .vsel").forEach(function(c){ c.checked = v; });
+    }
   });
   document.getElementById("btnLinks").addEventListener("click", generarLinks);
   document.getElementById("linkCancel").addEventListener("click", cerrarLink);
