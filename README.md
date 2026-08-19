@@ -110,6 +110,8 @@ propio número**. No entra en el reparto —esas unidades ya no están en el gal
 al total del SKU**, porque se venden igual.
 
 Por eso **una venta despachada por Full descuenta del Full de esa publicación, no del galpón**.
+Si esa publicación está agrupada, el descuento va a **todas las del grupo**, porque Mercado Libre
+les sincroniza también el número de Full.
 La devolución de una venta Full devuelve las unidades a Full, y borrar la venta también. Si una
 venta llega marcada como Full pero la publicación no tiene unidades cargadas ahí, no se descuenta
 de ningún lado y el aviso lo dice.
@@ -135,6 +137,10 @@ De los 104 SKU combo:
 
 Los que se cargan a mano llevan el cartel **COMBO A MANO** para no confundirlos con los
 automáticos: `00261 + FD5154` lo lleva porque ni `00261` ni `FD5154` existen sueltos.
+
+**El cartel se puede cambiar**: un clic pasa un combo automático a carga manual y al revés.
+Si se intenta automatizar uno que no se puede, el aviso dice exactamente qué partes faltan
+en el catálogo.
 
 ### Stock fantasma
 

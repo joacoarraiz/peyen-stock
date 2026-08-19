@@ -502,7 +502,8 @@
       var raw = localStorage.getItem(KEY);
       if(raw){ var s = JSON.parse(raw); if(s && s.rows && s.rows.length) return s; }
     }catch(e){}
-    return { rows: [], sku: {}, skuAt: {}, rowAt: {}, revisado: {}, ventas: [], savedAt: null };   // los datos reales llegan del servidor
+    return { rows: [], sku: {}, skuAt: {}, rowAt: {}, revisado: {}, comboManual: {},
+             ventas: [], savedAt: null };   // los datos reales llegan del servidor
   }
 
   function n(v){ v = parseInt(v,10); return isNaN(v) ? 0 : v; }
@@ -599,6 +600,7 @@
   // parte no existe como SKU propio: sin ese dato el combo no se puede calcular.
   function partesDe(sku, universo){
     if(!isCombo(sku)) return null;
+    if((state.comboManual || {})[sku]) return null;   // forzado a mano desde el cartel
     var ps = sku.replace(/^\s*COMBO\s+/i, "").split("+")
                 .map(function(p){ return p.trim(); }).filter(Boolean);
     if(ps.length < 2) return null;
@@ -784,10 +786,10 @@
       // un combo solo se calcula si TODAS sus partes existen como SKU propio; si no,
       // el stock se carga a mano y el cartel tiene que decirlo
       var auto = !!partesDe(sku, universoSku());
-      chips += '<span class="chip c-combo" title="' + (auto
-        ? "Se calcula solo: toma el mínimo entre lo que le tocó a cada parte."
-        : "Alguna de sus partes no existe como SKU suelto en el catálogo, así que el stock se carga a mano.") +
-        '">' + (auto ? "COMBO" : "COMBO A MANO") + "</span> ";
+      chips += '<button class="chip c-combo" data-act="modoCombo" title="' + (auto
+        ? "Se calcula solo con el mínimo entre sus partes. Clic para pasarlo a carga manual."
+        : "El stock se carga a mano. Clic para intentar calcularlo desde sus partes.") +
+        '">' + (auto ? "COMBO" : "COMBO A MANO") + " ⇄</button> ";
     }
     if(revisar(all, sku)) chips += '<button class="chip c-warn" data-act="revisado" ' +
       'title="Dos publicaciones suman con el mismo stock: puede ser la misma mercadería ' +
@@ -1133,6 +1135,7 @@
 
   function aplicarVentas(){
     if(!state.sku) state.sku = {};
+    asegurarSku();     // si nunca se abrió la vista por SKU, no había de dónde descontar
     var tocados = {}, sinSku = 0, enFull = 0, sinFull = 0;
     (state.ventas || []).forEach(function(v){
       if(!v.descuenta) return;                 // el histórico no toca stock
@@ -1144,7 +1147,11 @@
       if(v.envio === "Full"){
         var r = fullDe(v);
         if(!r || (delta > 0 && !n(r.full))){ sinFull++; v.aplicado = debe; return; }
-        r.full = Math.max(0, n(r.full) - delta);
+        var queda = Math.max(0, n(r.full) - delta);
+        // las agrupadas comparten la misma mercadería en Full: se mueven juntas
+        state.rows.forEach(function(x){
+          if(x === r || (r.link && x.link === r.link && x.sku === r.sku)) x.full = queda;
+        });
         v.aplicado = debe;
         enFull++;
         return;
@@ -1448,6 +1455,10 @@
       var fi = find(e.target.closest("tr.pub").dataset.id);
       if(fi){
         fi.full = n(enFull.value);
+        // mismo criterio que el stock: las agrupadas comparten el número
+        if(fi.link) state.rows.forEach(function(x){
+          if(x !== fi && x.link === fi.link && x.sku === fi.sku) x.full = fi.full;
+        });
         document.getElementById("shown").textContent =
           state.rows.filter(function(r){ return n(r.full) > 0; }).length + " publicaciones en Full · " +
           state.rows.reduce(function(s, r){ return s + n(r.full); }, 0) + " unidades";
@@ -1529,6 +1540,29 @@
         markDirty(); render();
         toast(dr.mla + " separada del grupo: ahora cuenta aparte.");
       }
+      return;
+    }
+    if(act === "modoCombo"){
+      if(!state.comboManual) state.comboManual = {};
+      // "manual" puede venir de un override o de que falte alguna parte: se mira el
+      // estado real, no el override, o el clic no hace lo que el cartel promete
+      var esManual = !partesDe(sku, universoSku());
+      if(!esManual){
+        state.comboManual[sku] = true;
+        toast(sku + ": pasa a carga manual.");
+      } else {
+        delete state.comboManual[sku];
+        if(!partesDe(sku, universoSku())){
+          var faltan = sku.replace(/^\s*COMBO\s+/i, "").split("+")
+            .map(function(x){ return x.trim(); })
+            .filter(function(x){ return x && !universoSku()[x]; });
+          alert("No se puede calcular solo. Estas partes no existen como SKU sueltos en el " +
+                "catálogo: " + faltan.join(", ") + ". Agregalas como SKU y volvé a intentar.");
+          return;
+        }
+        toast(sku + ": vuelve a calcularse desde sus partes.");
+      }
+      markDirty(); render();
       return;
     }
     if(act === "revisado"){
@@ -1746,6 +1780,7 @@
     setState("Guardando…");
     api("PUT", { rows: state.rows, sku: state.sku || {}, skuAt: state.skuAt || {},
       rowAt: state.rowAt || {}, revisado: state.revisado || {}, ventas: state.ventas || [],
+      comboManual: state.comboManual || {},
       base: pisar || base })
       .then(function(res){
         if(res.status === 409){
@@ -1797,7 +1832,8 @@
         var venia = base;
         base = d.savedAt;
         state = { rows: d.rows, sku: d.sku || {}, skuAt: d.skuAt || {}, rowAt: d.rowAt || {},
-          revisado: d.revisado || {}, ventas: d.ventas || [], savedAt: d.savedAt };
+          revisado: d.revisado || {}, comboManual: d.comboManual || {},
+          ventas: d.ventas || [], savedAt: d.savedAt };
         dirty = false;
         aviso(false);
         render();
