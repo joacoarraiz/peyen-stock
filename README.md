@@ -42,10 +42,20 @@ Ejemplo real del catálogo: `68501/A` con 3 unidades, usado por 3 publicaciones 
 un combo) → 1 a cada una. Si `TS-30023`, la otra parte del combo, no alcanza para dar 1 por
 publicación, el combo queda en 0 y sobran 2 unidades de `68501/A` reservadas sin poder venderse.
 
-### Encontrar qué cambió
+### Qué hay que actualizar en Mercado Libre
 
-Después de importar la planilla del cliente cambian cientos de SKU y buscarlos a ojo es
-imposible. La vista por SKU marca **solo los que cambiaron de valor**, no los que fueron
+Es lo que se usa después de que el cliente sube su Excel. La vista **por publicación** marca cada
+MLA cuyo stock o precio cambió, con el valor anterior al lado (`stock 12 → 19`), y el filtro
+**Solo las que hay que actualizar** deja nada más que esas: la lista de trabajo.
+
+**Descargar Excel** respeta el filtro, así que con esa lista en pantalla el archivo sale con las
+publicaciones a tocar y nada más, e incluye las columnas *Que cambio* y *Link*.
+
+**Marcar actualizadas** borra las marcas cuando el trabajo ya está hecho en Mercado Libre.
+
+### Encontrar qué SKU cambió
+
+Lo mismo pero a nivel SKU, en su propia vista. Marca **solo los que cambiaron de valor**, no los que fueron
 tocados: de una importación de 470 filas quedaron marcados 429, porque 41 traían el mismo
 número que ya había.
 

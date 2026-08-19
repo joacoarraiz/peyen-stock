@@ -44,10 +44,12 @@ async function abrir(buf) {
 
 /* ---------- 1. escribir y volver a leer ---------- */
 const filas = [
-  ["SKU", "MLA", "Titulo", "Estado", "Stock", "Suma al total"],
-  ["K-7806", "MLA1493593951", "Kit Pernos Caliper VW Bora Golf", "Activa", 5, "Si"],
-  ["K-7806", "MLA2068905132", 'Kit "Pernos" & Caliper <Ford> Ecosport', "Inactiva", 0, "No"],
-  ["6811 + TS-30023", "MLA2609575884", "Bomba Freno 1'' Pala Michigan + Líquido", "Activa", 12, "Si"],
+  ["SKU", "MLA", "Titulo", "Estado", "Precio", "Stock", "Suma al total", "Que cambio", "Link"],
+  ["K-7806", "MLA1493593951", "Kit Pernos Caliper VW Bora Golf", "Activa", 20375, 5, "Si",
+   "stock 8 -> 5", "https://articulo.mercadolibre.com.ar/MLA-1493593951-_JM"],
+  ["K-7806", "MLA2068905132", 'Kit "Pernos" & Caliper <Ford> Ecosport', "Inactiva", 0, 0, "No", "", ""],
+  ["6811 + TS-30023", "MLA2609575884", "Bomba Freno 1'' Pala Michigan + Líquido", "Activa",
+   99900, 12, "Si", "", ""],
 ];
 const bytes = Buffer.from(await api.buildXlsx(filas).arrayBuffer());
 const tmp = join(HERE, "..", "_prueba.xlsx");
@@ -58,8 +60,9 @@ const propio = await abrir(bytes);
 const head0 = api.encabezado(propio[0].filas);
 const m0 = api.mapearColumnas(propio[0].filas, head0, "pub");
 ok(propio.length === 1 && propio[0].nombre === "Stock", "una hoja, se lee su nombre");
-ok(m0.mla === 1 && m0.sku === 0 && m0.title === 2 && m0.estado === 3 && m0.stock === 4,
+ok(m0.mla === 1 && m0.sku === 0 && m0.title === 2 && m0.estado === 3 && m0.stock === 5,
   "columnas propias mapeadas solas");
+ok(m0.price === 4, `precio mapeado (${m0.price}), sin confundirlo con el stock`);
 const rt = propio[0].filas.slice(head0 + 1);
 ok(rt.length === 3, `vuelven las 3 filas (${rt.length})`);
 ok(rt[1][2] === 'Kit "Pernos" & Caliper <Ford> Ecosport', "comillas, & y <> sobreviven");

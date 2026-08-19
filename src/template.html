@@ -77,7 +77,7 @@
   .chk{display:flex;align-items:center;gap:6px;font-size:12.5px;color:var(--muted);
        background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:6px 10px}
   .chk input{margin:0;accent-color:var(--red)}
-  .solo-sku{display:none}
+  .oculto{display:none !important}
   .cambio{font-size:11.5px;color:var(--ok);font-weight:600;white-space:nowrap}
   .cambio b{color:var(--muted);font-weight:400}
   .cambio.baja{color:var(--danger)}
@@ -292,12 +292,14 @@
   <label class="chk"><input type="checkbox" id="fZero"> Sin stock</label>
   <label class="chk"><input type="checkbox" id="fMulti"> SKU con varias publicaciones</label>
   <label class="chk"><input type="checkbox" id="fRev"> Solo los que dicen REVISAR</label>
-  <label class="chk solo-sku"><input type="checkbox" id="fCambio"> Solo los que cambiaron</label>
-  <select id="ordenSku" class="solo-sku">
+  <label class="chk"><input type="checkbox" id="fPend"> <b id="pendTxt">Solo las que hay que actualizar</b></label>
+  <button class="btn btn-line oculto" id="btnHecho">Marcar actualizadas</button>
+  <label class="chk solo-sku oculto"><input type="checkbox" id="fCambio"> Solo los que cambiaron</label>
+  <select id="ordenSku" class="solo-sku oculto">
     <option value="sku">Ordenar por SKU</option>
     <option value="cambio">Ordenar por último cambio</option>
   </select>
-  <button class="btn btn-line solo-sku" id="btnVisto">Marcar revisados</button>
+  <button class="btn btn-line solo-sku oculto" id="btnVisto">Marcar revisados</button>
   <button class="btn btn-line" id="btnToggle">Contraer todo</button>
   <button class="btn btn-line" id="btnLinks">Generar links</button>
   <button class="btn btn-line" id="btnAddSku">+ Agregar publicación</button>
@@ -445,7 +447,7 @@
       var raw = localStorage.getItem(KEY);
       if(raw){ var s = JSON.parse(raw); if(s && s.rows && s.rows.length) return s; }
     }catch(e){}
-    return { rows: [], sku: {}, skuAt: {}, revisado: {}, savedAt: null };   // los datos reales llegan del servidor
+    return { rows: [], sku: {}, skuAt: {}, rowAt: {}, revisado: {}, savedAt: null };   // los datos reales llegan del servidor
   }
 
   function n(v){ v = parseInt(v,10); return isNaN(v) ? 0 : v; }
@@ -499,11 +501,13 @@
     var zero = document.getElementById("fZero").checked;
     var multi = document.getElementById("fMulti").checked;
     var rev = document.getElementById("fRev").checked;
+    var pend = document.getElementById("fPend").checked;
 
     return bySku(state.rows).map(function(g){
       var rows = g.rows.filter(function(r){
         if(est && r.estado !== est) return false;
         if(zero && n(r.stock) + n(r.full) !== 0) return false;
+        if(pend && !(state.rowAt || {})[r.id]) return false;
         return true;
       });
       if(q){
@@ -580,7 +584,8 @@
       parte[sku] = cant ? Math.floor(total / cant) : 0;
     });
 
-    var hechos = {};
+    var hechos = {}, previo = {};
+    state.rows.forEach(function(r){ previo[r.id] = { s: n(r.stock), p: n(r.price) }; });
     state.rows.forEach(function(r){
       if(r.estado !== "Activa") return;
       var ps = partesDe(r.sku, u);
@@ -601,6 +606,7 @@
       var g = r.sku + "||" + (r.link || r.id);
       if(r.estado === "Activa" && hechos[g] !== undefined) r.stock = hechos[g];
     });
+    state.rows.forEach(function(r){ marcarFila(r, previo[r.id].s, previo[r.id].p); });
   }
 
   // Lo que hoy está publicado de un SKU base, para comparar contra lo declarado.
@@ -642,6 +648,7 @@
     if(r.variante) chips += '<span class="chip c-var" title="Es una variante dentro de la misma publicación">VARIANTE</span> ';
     if(n(r.full)) chips += '<span class="chip c-full">' + n(r.full) + ' EN FULL</span> ';
     if(!n(r.stock) && !n(r.full) && !off) chips += '<span class="chip c-zero">SIN STOCK</span> ';
+    chips = filaHTML(r) + chips;
 
     var mla = r.url
       ? '<a class="mla lnk" href="' + esc(r.url) + '" target="_blank" rel="noopener" ' +
@@ -742,6 +749,36 @@
   /* Anota el cambio de stock de un SKU para poder encontrarlo después. Solo cuando
      el valor CAMBIA de verdad: si marcara cada fila tocada, una carga de 470 filas
      dejaría marcadas las 470 y no serviría para nada. */
+  /* Marca la PUBLICACIÓN que cambió. Es la lista de trabajo real: después de que
+     el cliente sube su Excel, esto dice qué MLA hay que ir a tocar en Mercado Libre. */
+  function marcarFila(r, antes, antesPrecio){
+    if(!state.rowAt) state.rowAt = {};
+    var cambioStock = n(antes) !== n(r.stock);
+    var cambioPrecio = n(antesPrecio) !== n(r.price);
+    if(!cambioStock && !cambioPrecio) return;
+    var previo = state.rowAt[r.id] || {};
+    var m = {
+      t: new Date().toISOString(),
+      de: previo.de !== undefined ? previo.de : n(antes),
+      dePrecio: previo.dePrecio !== undefined ? previo.dePrecio : n(antesPrecio)
+    };
+    // si volvió a los valores de partida, deja de estar pendiente
+    if(n(m.de) === n(r.stock) && n(m.dePrecio) === n(r.price)) delete state.rowAt[r.id];
+    else state.rowAt[r.id] = m;
+  }
+
+  function filaHTML(r){
+    var c = (state.rowAt || {})[r.id];
+    if(!c) return "";
+    var t = [];
+    if(n(c.de) !== n(r.stock)) t.push("stock " + n(c.de) + " → " + n(r.stock));
+    if(n(c.dePrecio) !== n(r.price)) t.push("precio " + plata(c.dePrecio) + " → " + plata(r.price));
+    if(!t.length) return "";
+    var baja = n(r.stock) < n(c.de);
+    return '<span class="chip ' + (baja ? "c-zero" : "c-var") + '" title="Cambió ' + hace(c.t) +
+      '. Hay que actualizarla en Mercado Libre.">' + esc(t.join(" · ")) + "</span> ";
+  }
+
   function marcarCambio(sku, antes, ahora){
     if(n(antes) === n(ahora)) return;
     if(!state.skuAt) state.skuAt = {};
@@ -870,7 +907,7 @@
       (cambiados ? " · " + cambiados + " con cambios sin revisar" : "");
     var bv = document.getElementById("btnVisto");
     bv.textContent = "Marcar revisados (" + cambiados + ")";
-    bv.style.display = cambiados ? "" : "none";
+    bv.classList.toggle("oculto", !cambiados);
     kpis();
   }
 
@@ -980,8 +1017,14 @@
     document.getElementById("app").innerHTML = gs.length
       ? head + gs.map(groupHTML).join("") + "</table>"
       : '<div class="empty">No hay resultados con esos filtros.</div>';
+    var pendientes = Object.keys(state.rowAt || {}).length;
+    document.getElementById("pendTxt").textContent =
+      pendientes ? "Solo las " + pendientes + " que hay que actualizar" : "Solo las que hay que actualizar";
+    document.getElementById("btnHecho").classList.toggle("oculto", !pendientes || vista !== "pub");
+    document.getElementById("btnHecho").textContent = "Marcar actualizadas (" + pendientes + ")";
     document.getElementById("shown").textContent =
-      gs.length + " SKU visibles de " + bySku(state.rows).length;
+      gs.length + " SKU visibles de " + bySku(state.rows).length +
+      (pendientes ? " · " + pendientes + " publicaciones para actualizar en Mercado Libre" : "");
     kpis();
   }
 
@@ -1349,7 +1392,7 @@
   function empujar(pisar){
     setState("Guardando…");
     api("PUT", { rows: state.rows, sku: state.sku || {}, skuAt: state.skuAt || {},
-      revisado: state.revisado || {}, base: pisar || base })
+      rowAt: state.rowAt || {}, revisado: state.revisado || {}, base: pisar || base })
       .then(function(res){
         if(res.status === 409){
           res.json().then(function(d){
@@ -1399,7 +1442,8 @@
         if(dirty && !adoptar){ aviso(true, d.savedAt); return; }
         var venia = base;
         base = d.savedAt;
-        state = { rows: d.rows, sku: d.sku || {}, skuAt: d.skuAt || {}, revisado: d.revisado || {}, savedAt: d.savedAt };
+        state = { rows: d.rows, sku: d.sku || {}, skuAt: d.skuAt || {}, rowAt: d.rowAt || {},
+          revisado: d.revisado || {}, savedAt: d.savedAt };
         dirty = false;
         aviso(false);
         render();
@@ -1546,16 +1590,28 @@
     ]);
   }
 
-  var COLS = ["SKU", "MLA", "Titulo", "Estado", "Stock", "Suma al total"];
+  var COLS = ["SKU", "MLA", "Titulo", "Estado", "Precio", "Stock", "Suma al total",
+              "Que cambio", "Link"];
 
+  // Baja lo que estás viendo: con el filtro de pendientes puesto, sale la lista de
+  // trabajo justa para ir a actualizar en Mercado Libre.
   function bajarExcel(){
     var filas = [COLS];
-    bySku(state.rows).forEach(function(g){
+    var grupos = vista === "pub" ? filtered() : bySku(state.rows);
+    grupos.forEach(function(g){
       g.rows.forEach(function(r){
-        filas.push([r.sku, r.mla, r.title, r.estado, n(r.stock),
-                    r.cuenta !== false ? "Si" : "No"]);
+        var c = (state.rowAt || {})[r.id], cambio = "";
+        if(c){
+          var t = [];
+          if(n(c.de) !== n(r.stock)) t.push("stock " + n(c.de) + " -> " + n(r.stock));
+          if(n(c.dePrecio) !== n(r.price)) t.push("precio " + n(c.dePrecio) + " -> " + n(r.price));
+          cambio = t.join(" | ");
+        }
+        filas.push([r.sku, r.mla, r.title, r.estado, n(r.price), n(r.stock),
+                    r.cuenta !== false ? "Si" : "No", cambio, r.url || ""]);
       });
     });
+    if(filas.length === 1){ toast("No hay nada para exportar con esos filtros"); return; }
     var a = document.createElement("a");
     a.href = URL.createObjectURL(buildXlsx(filas));
     a.download = "peyen-stock-" + new Date().toISOString().slice(0,10) + ".xlsx";
@@ -2003,18 +2059,18 @@
   }
 
   /* ---------- eventos ---------- */
-  ["q","fEstado","fZero","fMulti","fRev","fCambio","ordenSku"].forEach(function(id){
+  ["q","fEstado","fZero","fMulti","fRev","fPend","fCambio","ordenSku"].forEach(function(id){
     document.getElementById(id).addEventListener("input", render);
   });
   document.querySelectorAll(".tab").forEach(function(b){
     b.addEventListener("click", function(){
       vista = b.dataset.vista;
       document.querySelectorAll(".tab").forEach(function(x){ x.classList.toggle("on", x === b); });
-      // los filtros de publicaciones solo aplican a la vista de publicaciones
-      document.querySelectorAll(".chk:not(.solo-sku), #fEstado, #btnToggle, #btnLinks")
-        .forEach(function(x){ x.style.display = vista === "pub" ? "" : "none"; });
+      // se ocultan con clase, no con style: el display:"" perdía contra el CSS
+      document.querySelectorAll(".chk:not(.solo-sku), #fEstado, #btnToggle, #btnLinks, #btnHecho")
+        .forEach(function(x){ x.classList.toggle("oculto", vista !== "pub"); });
       document.querySelectorAll(".solo-sku")
-        .forEach(function(x){ x.style.display = vista === "sku" ? "" : "none"; });
+        .forEach(function(x){ x.classList.toggle("oculto", vista !== "sku"); });
       var txt = vista === "sku" ? "+ Agregar SKU" : "+ Agregar publicación";
       document.getElementById("btnAddSku").textContent = txt;
       document.getElementById("btnAddSku2").textContent = txt;
@@ -2034,6 +2090,7 @@
     var tr = e.target.closest("[data-add]");
     if(tr) sumarAFull(tr.dataset.add);
   });
+  // marcar revisados: limpia las marcas de cambio de los SKU (vista Por SKU)
   document.getElementById("btnVisto").addEventListener("click", function(){
     var cuantos = Object.keys(state.skuAt || {}).length;
     if(!cuantos || !confirm("Se borran las marcas de cambio de " + cuantos + " SKU. ¿Seguir?")) return;
@@ -2042,15 +2099,17 @@
     markDirty(); render();
     toast("Listo. La próxima carga vuelve a marcar lo que cambie.");
   });
-  document.getElementById("btnTema").addEventListener("click", function(){
-    var oscuro = document.documentElement.dataset.tema === "oscuro";
-    var t = oscuro ? "claro" : "oscuro";
-    document.documentElement.dataset.tema = t;
-    try{ localStorage.setItem("peyen-tema", t); }catch(e){}
-    this.textContent = t === "oscuro" ? "☀" : "◐";
+
+  // marcar actualizadas: limpia la lista de publicaciones pendientes de tocar en ML
+  document.getElementById("btnHecho").addEventListener("click", function(){
+    var cuantas = Object.keys(state.rowAt || {}).length;
+    if(!cuantas || !confirm("Se borran las marcas de " + cuantas + " publicaciones. " +
+       "Hacelo cuando ya las actualizaste en Mercado Libre.")) return;
+    state.rowAt = {};
+    document.getElementById("fPend").checked = false;
+    markDirty(); render();
+    toast("Listo. La próxima carga vuelve a marcar lo que cambie.");
   });
-  document.getElementById("btnTema").textContent =
-    document.documentElement.dataset.tema === "oscuro" ? "☀" : "◐";
   document.getElementById("btnLinks").addEventListener("click", generarLinks);
   document.getElementById("linkCancel").addEventListener("click", cerrarLink);
   document.getElementById("linkOk").addEventListener("click", guardarLink);
