@@ -38,6 +38,9 @@ Reglas:
   entre lo que le tocó de cada parte. **Si una parte queda en 0, el combo queda en 0.**
 - La división es entera. Lo que no llega a repartirse queda como **«sobran N»** en la vista
   por SKU — es stock declarado que ninguna publicación está mostrando.
+- Cuando el total da **0** pero hay unidades, el motivo va debajo: **«N pausadas»** si están en
+  publicaciones inactivas, **«N sin sumar»** si la casilla *Suma* está destildada. En este
+  catálogo hay **34 SKU con 314 unidades** que solo viven en publicaciones pausadas.
 
 Ejemplo real del catálogo: `68501/A` con 3 unidades, usado por 3 publicaciones (dos propias y
 un combo) → 1 a cada una. Si `TS-30023`, la otra parte del combo, no alcanza para dar 1 por
