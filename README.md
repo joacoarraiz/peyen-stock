@@ -1,9 +1,9 @@
 # Peyen · Control de stock por SKU
 
-Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Tres vistas:
+Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Cuatro vistas:
 
 - **Por SKU** — se carga el stock físico y el precio de cada SKU. El stock se reparte entre sus
-  publicaciones; el precio baja igual a todas las activas.
+  publicaciones; el precio baja igual a todas sus publicaciones, activas o no.
 - **Por publicación** — cada MLA con su título, estado y stock, agrupado por SKU.
 - **En Full** — la mercadería que está en el depósito de Mercado Libre, editable aparte.
 - **Ventas** — el historial de ventas, que descuenta stock a partir de la segunda carga.
