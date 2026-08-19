@@ -8,6 +8,10 @@ Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Tres vis
 
 Los cambios se guardan en el servidor: los ve cualquiera que entre con la clave.
 
+Tiene **modo claro y oscuro** — arranca según lo que tenga configurado el sistema y el botón ◐
+de la barra lo cambia y se lo acuerda. Toda la paleta son variables CSS: para retocar colores se
+tocan los bloques `:root` y `[data-tema="oscuro"]` del `<style>`, nada más.
+
 **El repositorio tiene que ser privado.** `netlify/functions/seed.mjs` lleva el catálogo completo
 del cliente. El HTML publicado no lleva datos adentro — se piden al servidor después del login.
 
