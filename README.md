@@ -121,9 +121,20 @@ número para escribir la cantidad real. La **✕** de cada fila la saca de Full.
 
 ### Combos que no se pueden calcular
 
-De los 104 SKU combo, **solo 53 tienen todas sus partes como SKU propio**. Los otros 51
-(`BAR 24786 + FRI 485`) referencian códigos que no existen sueltos en el catálogo, así que no hay
-de dónde sacarles el stock: se tratan como un SKU normal y se cargan a mano.
+Un combo se calcula solo cuando **todas** sus partes existen como SKU propio: ahí toma el mínimo
+entre lo que le tocó a cada una y sigue los cambios sin que nadie lo toque. Si a una parte le
+sobra y a la otra no, manda la escasa; si una queda en 0, el combo queda en 0.
+
+De los 104 SKU combo:
+
+| | combos | qué hace |
+|---|---|---|
+| Todas las partes conocidas | **53** | se calcula solo |
+| Una parte conocida, otra no | **3** | se carga a mano (5 unidades en juego) |
+| Ninguna parte conocida | **48** | se carga a mano |
+
+Los que se cargan a mano llevan el cartel **COMBO A MANO** para no confundirlos con los
+automáticos: `00261 + FD5154` lo lleva porque ni `00261` ni `FD5154` existen sueltos.
 
 ### Stock fantasma
 

@@ -780,7 +780,15 @@
     var chips = '<span class="chip c-count">' + all.length +
                 (all.length === 1 ? " publicación" : " publicaciones") +
                 " · " + act + " activa" + (act === 1 ? "" : "s") + "</span> ";
-    if(isCombo(sku)) chips += '<span class="chip c-combo" title="El SKU combina más de un producto">COMBO</span> ';
+    if(isCombo(sku)){
+      // un combo solo se calcula si TODAS sus partes existen como SKU propio; si no,
+      // el stock se carga a mano y el cartel tiene que decirlo
+      var auto = !!partesDe(sku, universoSku());
+      chips += '<span class="chip c-combo" title="' + (auto
+        ? "Se calcula solo: toma el mínimo entre lo que le tocó a cada parte."
+        : "Alguna de sus partes no existe como SKU suelto en el catálogo, así que el stock se carga a mano.") +
+        '">' + (auto ? "COMBO" : "COMBO A MANO") + "</span> ";
+    }
     if(revisar(all, sku)) chips += '<button class="chip c-warn" data-act="revisado" ' +
       'title="Dos publicaciones suman con el mismo stock: puede ser la misma mercadería ' +
       'contada dos veces. Clic para darlo por revisado y sacar el aviso.">REVISAR ✕</button> ';
