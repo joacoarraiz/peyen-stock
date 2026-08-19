@@ -37,6 +37,18 @@ Ejemplo real del catálogo: `68501/A` con 3 unidades, usado por 3 publicaciones 
 un combo) → 1 a cada una. Si `TS-30023`, la otra parte del combo, no alcanza para dar 1 por
 publicación, el combo queda en 0 y sobran 2 unidades de `68501/A` reservadas sin poder venderse.
 
+### Encontrar qué cambió
+
+Después de importar la planilla del cliente cambian cientos de SKU y buscarlos a ojo es
+imposible. La vista por SKU marca **solo los que cambiaron de valor**, no los que fueron
+tocados: de una importación de 470 filas quedaron marcados 429, porque 41 traían el mismo
+número que ya había.
+
+Cada uno muestra **de dónde venía y hace cuánto** (`12 → 19 · recién`), en rojo si bajó. Hay
+un filtro *Solo los que cambiaron* y un orden *por último cambio*. La marca se borra sola si
+el valor vuelve al original, y **Marcar revisados** limpia todas de una para que la próxima
+carga arranque en cero.
+
 ### Publicaciones sincronizadas y de catálogo
 
 Cuando la misma mercadería está publicada dos veces —catálogo, o dos publicaciones que ML

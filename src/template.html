@@ -51,6 +51,10 @@
   .chk{display:flex;align-items:center;gap:6px;font-size:13.5px;color:var(--muted);
        background:#fff;border:1px solid var(--line);border-radius:8px;padding:8px 12px}
   .chk input{margin:0}
+  .solo-sku{display:none}
+  .cambio{font-size:12px;color:var(--ok);font-weight:600;white-space:nowrap}
+  .cambio b{color:var(--muted);font-weight:400}
+  .cambio.baja{color:var(--red)}
 
   #alert{margin:0 22px 14px;background:var(--warn-soft);border:1px solid #f0d59a;
          border-radius:8px;padding:11px 15px;font-size:13.5px;color:var(--warn)}
@@ -226,6 +230,12 @@
   <label class="chk"><input type="checkbox" id="fZero"> Sin stock</label>
   <label class="chk"><input type="checkbox" id="fMulti"> SKU con varias publicaciones</label>
   <label class="chk"><input type="checkbox" id="fRev"> Solo los que dicen REVISAR</label>
+  <label class="chk solo-sku"><input type="checkbox" id="fCambio"> Solo los que cambiaron</label>
+  <select id="ordenSku" class="solo-sku">
+    <option value="sku">Ordenar por SKU</option>
+    <option value="cambio">Ordenar por último cambio</option>
+  </select>
+  <button class="btn btn-line solo-sku" id="btnVisto">Marcar revisados</button>
   <button class="btn btn-line" id="btnToggle">Contraer todo</button>
   <button class="btn btn-line" id="btnAddSku">+ Agregar publicación</button>
 </div>
@@ -334,7 +344,7 @@
       var raw = localStorage.getItem(KEY);
       if(raw){ var s = JSON.parse(raw); if(s && s.rows && s.rows.length) return s; }
     }catch(e){}
-    return { rows: [], sku: {}, savedAt: null };   // los datos reales llegan del servidor
+    return { rows: [], sku: {}, skuAt: {}, savedAt: null };   // los datos reales llegan del servidor
   }
 
   function n(v){ v = parseInt(v,10); return isNaN(v) ? 0 : v; }
@@ -558,6 +568,31 @@
     return h + "</tbody>";
   }
 
+  /* Anota el cambio de stock de un SKU para poder encontrarlo después. Solo cuando
+     el valor CAMBIA de verdad: si marcara cada fila tocada, una carga de 470 filas
+     dejaría marcadas las 470 y no serviría para nada. */
+  function marcarCambio(sku, antes, ahora){
+    if(n(antes) === n(ahora)) return;
+    if(!state.skuAt) state.skuAt = {};
+    var previo = state.skuAt[sku];
+    state.skuAt[sku] = {
+      t: new Date().toISOString(),
+      // si ya venía marcado hoy, se conserva el valor original, no el del paso anterior
+      de: previo && previo.de !== undefined ? previo.de : n(antes)
+    };
+    if(n(state.skuAt[sku].de) === n(ahora)) delete state.skuAt[sku];   // volvió a donde estaba
+  }
+
+  function hace(iso){
+    var m = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if(m < 1) return "recién";
+    if(m < 60) return "hace " + m + " min";
+    var h = Math.round(m / 60);
+    if(h < 24) return "hace " + h + " h";
+    var d = Math.round(h / 24);
+    return d === 1 ? "ayer" : "hace " + d + " días";
+  }
+
   // Arranca el stock declarado con lo que hoy está publicado, para no empezar en cero.
   function asegurarSku(){
     if(!state.sku) state.sku = {};
@@ -568,16 +603,43 @@
     });
   }
 
+  function cambioHTML(sku, ahora, cant){
+    var c = (state.skuAt || {})[sku];
+    if(!c) return '<span class="desc">' +
+      (cant ? "" : "cargá stock igual, se reparte cuando actives alguna") + "</span>";
+    var baja = n(ahora) < n(c.de);
+    return '<span class="cambio' + (baja ? " baja" : "") + '">' +
+      "<b>" + n(c.de) + " →</b> " + n(ahora) +
+      ' <b>· ' + hace(c.t) + "</b></span>";
+  }
+
   function renderSku(){
     var u = universoSku(), c = consumidores(), uso = c.uso;
     var q = document.getElementById("q").value.trim().toLowerCase();
-    var lista = Object.keys(u).filter(function(s){ return !q || s.toLowerCase().indexOf(q) >= 0; });
-    var bases = lista.filter(function(s){ return !partesDe(s, u); }).sort(natCmp);
-    var combos = lista.filter(function(s){ return !!partesDe(s, u); }).sort(natCmp);
+    var soloCambio = document.getElementById("fCambio").checked;
+    var porFecha = document.getElementById("ordenSku").value === "cambio";
+    var at = state.skuAt || {};
 
+    var lista = Object.keys(u).filter(function(s){
+      if(q && s.toLowerCase().indexOf(q) < 0) return false;
+      if(soloCambio && !at[s]) return false;
+      return true;
+    });
+    // por fecha: lo más nuevo arriba, y lo que nunca cambió al final
+    var orden = porFecha
+      ? function(a, b){
+          var ta = at[a] ? at[a].t : "", tb = at[b] ? at[b].t : "";
+          if(ta !== tb) return ta > tb ? -1 : 1;
+          return natCmp(a, b);
+        }
+      : natCmp;
+    var bases = lista.filter(function(s){ return !partesDe(s, u); }).sort(orden);
+    var combos = lista.filter(function(s){ return !!partesDe(s, u); }).sort(orden);
+
+    var cambiados = Object.keys(at).length;
     var h = '<table><thead><tr><th>SKU</th><th>Publicaciones que lo usan</th>' +
       '<th style="text-align:right">Stock físico</th>' +
-      '<th style="text-align:right">Repartido</th><th></th></tr></thead><tbody>';
+      '<th style="text-align:right">Repartido</th><th>Último cambio</th></tr></thead><tbody>';
 
     bases.forEach(function(sku){
       var cant = (uso[sku] || []).length, pub = publicadoDe(sku), fis = n(state.sku[sku]);
@@ -590,7 +652,7 @@
         '<td style="text-align:right"><input class="fis" type="number" min="0" data-sku-stock value="' + fis + '"></td>' +
         '<td class="rep" data-rep>' + pub +
           (sobra > 0 ? "<small>sobran " + sobra + "</small>" : "") + "</td>" +
-        '<td class="desc">' + (cant ? "" : "cargá stock igual, se reparte cuando actives alguna") + "</td></tr>";
+        '<td>' + cambioHTML(sku, fis, cant) + "</td></tr>";
     });
 
     if(combos.length){
@@ -621,7 +683,11 @@
     h += "</tbody></table>";
     document.getElementById("app").innerHTML = h;
     document.getElementById("shown").textContent =
-      bases.length + " SKU con stock propio · " + combos.length + " combos calculados";
+      bases.length + " SKU con stock propio · " + combos.length + " combos calculados" +
+      (cambiados ? " · " + cambiados + " con cambios sin revisar" : "");
+    var bv = document.getElementById("btnVisto");
+    bv.textContent = "Marcar revisados (" + cambiados + ")";
+    bv.style.display = cambiados ? "" : "none";
     kpis();
   }
 
@@ -727,6 +793,7 @@
     if(fis){
       var fila = e.target.closest("tr.skurow");
       var quien = fila.dataset.sku;
+      marcarCambio(quien, state.sku[quien], fis.value);
       state.sku[quien] = n(fis.value);
       repartir();
       // se redibuja entero (un SKU afecta a los combos que lo usan) y se devuelve el foco
@@ -925,7 +992,7 @@
   // es decirle "sé que hay una versión más nueva y la reemplazo", y corta ahí.
   function empujar(pisar){
     setState("Guardando…");
-    api("PUT", { rows: state.rows, sku: state.sku || {}, base: pisar || base })
+    api("PUT", { rows: state.rows, sku: state.sku || {}, skuAt: state.skuAt || {}, base: pisar || base })
       .then(function(res){
         if(res.status === 409){
           res.json().then(function(d){
@@ -975,7 +1042,7 @@
         if(dirty && !adoptar){ aviso(true, d.savedAt); return; }
         var venia = base;
         base = d.savedAt;
-        state = { rows: d.rows, sku: d.sku || {}, savedAt: d.savedAt };
+        state = { rows: d.rows, sku: d.sku || {}, skuAt: d.skuAt || {}, savedAt: d.savedAt };
         dirty = false;
         aviso(false);
         render();
@@ -1462,6 +1529,7 @@
 
     ent.forEach(function(f){
       if(imp.tipo === "sku"){
+        marcarCambio(f.sku, state.sku[f.sku], f.stock);
         state.sku[f.sku] = n(f.stock);
         if(f.existe) act++; else nue++;
         return;
@@ -1568,7 +1636,7 @@
   }
 
   /* ---------- eventos ---------- */
-  ["q","fEstado","fZero","fMulti","fRev"].forEach(function(id){
+  ["q","fEstado","fZero","fMulti","fRev","fCambio","ordenSku"].forEach(function(id){
     document.getElementById(id).addEventListener("input", render);
   });
   document.querySelectorAll(".tab").forEach(function(b){
@@ -1576,8 +1644,10 @@
       vista = b.dataset.vista;
       document.querySelectorAll(".tab").forEach(function(x){ x.classList.toggle("on", x === b); });
       // los filtros de publicaciones solo aplican a la vista de publicaciones
-      document.querySelectorAll(".chk, #fEstado, #btnToggle")
+      document.querySelectorAll(".chk:not(.solo-sku), #fEstado, #btnToggle")
         .forEach(function(x){ x.style.display = vista === "pub" ? "" : "none"; });
+      document.querySelectorAll(".solo-sku")
+        .forEach(function(x){ x.style.display = vista === "sku" ? "" : "none"; });
       var txt = vista === "sku" ? "+ Agregar SKU" : "+ Agregar publicación";
       document.getElementById("btnAddSku").textContent = txt;
       document.getElementById("btnAddSku2").textContent = txt;
@@ -1589,6 +1659,14 @@
         : "Buscar por SKU, MLA o título…";
       render();
     });
+  });
+  document.getElementById("btnVisto").addEventListener("click", function(){
+    var cuantos = Object.keys(state.skuAt || {}).length;
+    if(!cuantos || !confirm("Se borran las marcas de cambio de " + cuantos + " SKU. ¿Seguir?")) return;
+    state.skuAt = {};
+    document.getElementById("fCambio").checked = false;
+    markDirty(); render();
+    toast("Listo. La próxima carga vuelve a marcar lo que cambie.");
   });
   document.getElementById("btnSave").addEventListener("click", save);
   document.getElementById("btnXlsx").addEventListener("click", bajarExcel);
