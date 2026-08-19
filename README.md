@@ -102,9 +102,14 @@ con credenciales OAuth: con eso la API devuelve `permalink` y `pictures` de una.
 
 ### La mercadería en Full
 
-El stock que está en el depósito de Mercado Libre se maneja en su propia pestaña. **No entra en
-el reparto** —no está en el galpón de Peyen— pero **sí suma al total del SKU**, porque se vende
-igual.
+El stock que está en el depósito de Mercado Libre se maneja en su propia pestaña, **con su
+propio número**. No entra en el reparto —esas unidades ya no están en el galpón— pero **sí suma
+al total del SKU**, porque se venden igual.
+
+Por eso **una venta despachada por Full descuenta del Full de esa publicación, no del galpón**.
+La devolución de una venta Full devuelve las unidades a Full, y borrar la venta también. Si una
+venta llega marcada como Full pero la publicación no tiene unidades cargadas ahí, no se descuenta
+de ningún lado y el aviso lo dice.
 
 La pestaña lista las publicaciones que hoy tienen Full, con el número editable y, al lado, cuánto
 tienen en depósito para comparar. **+ Agregar a Full** abre el buscador de publicaciones que

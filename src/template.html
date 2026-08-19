@@ -1105,22 +1105,43 @@
   /* ---------- efecto sobre el stock ---------- */
   // Cada venta guarda cuánto descontó (v.aplicado). Si vuelve a importarse igual no
   // pasa nada; si cambió de estado, se ajusta solo la diferencia.
+  // De qué publicación sale una venta despachada por Full: la del MLA vendido si
+  // tiene unidades en Full, si no la primera del SKU que tenga.
+  function fullDe(v){
+    var mismo = state.rows.filter(function(r){ return r.mla === v.mla; });
+    var conFull = mismo.filter(function(r){ return n(r.full) > 0; })[0];
+    if(conFull) return conFull;
+    var delSku = state.rows.filter(function(r){ return r.sku === v.sku && n(r.full) > 0; })[0];
+    return delSku || mismo[0] || null;
+  }
+
   function aplicarVentas(){
     if(!state.sku) state.sku = {};
-    var tocados = {}, sinSku = 0;
+    var tocados = {}, sinSku = 0, enFull = 0, sinFull = 0;
     (state.ventas || []).forEach(function(v){
       if(!v.descuenta) return;                 // el histórico no toca stock
-      var debe = consume(v), ya = n(v.aplicado);
-      if(debe === ya) return;
+      var debe = consume(v), ya = n(v.aplicado), delta = debe - ya;
+      if(!delta) return;
+
+      // Full es mercadería que ya está en el depósito de Mercado Libre: esa venta
+      // no sale del galpón de Peyen, así que descuenta del Full de la publicación.
+      if(v.envio === "Full"){
+        var r = fullDe(v);
+        if(!r || (delta > 0 && !n(r.full))){ sinFull++; v.aplicado = debe; return; }
+        r.full = Math.max(0, n(r.full) - delta);
+        v.aplicado = debe;
+        enFull++;
+        return;
+      }
+
       if(state.sku[v.sku] === undefined){ sinSku++; v.aplicado = debe; return; }
-      state.sku[v.sku] = n(state.sku[v.sku]) - (debe - ya);
-      if(state.sku[v.sku] < 0) state.sku[v.sku] = 0;
+      state.sku[v.sku] = Math.max(0, n(state.sku[v.sku]) - delta);
       v.aplicado = debe;
       tocados[v.sku] = true;
     });
     var cuantos = Object.keys(tocados).length;
     if(cuantos) repartir();
-    return { skus: cuantos, sinSku: sinSku };
+    return { skus: cuantos, sinSku: sinSku, full: enFull, sinFull: sinFull };
   }
 
   function ventaId(){
@@ -1237,7 +1258,10 @@
     var r = aplicarVentas();
     cerrarVenta();
     markDirty(); render();
-    toast(r.skus ? "Guardada. Se ajustó el stock de " + r.skus + " SKU." : "Venta guardada.");
+    toast(r.full ? "Guardada. Se descontó del stock en Full."
+      : r.skus ? "Guardada. Se ajustó el stock de " + r.skus + " SKU."
+      : r.sinFull ? "Guardada, pero esa publicación no tiene unidades cargadas en Full."
+      : "Venta guardada.");
   }
 
   function borrarVentas(ids){
@@ -1247,7 +1271,12 @@
     // devolver lo que habían descontado antes de sacarlas
     state.ventas.forEach(function(v){
       if(ids.indexOf(v.id) < 0 || !n(v.aplicado)) return;
-      if(state.sku[v.sku] !== undefined) state.sku[v.sku] = n(state.sku[v.sku]) + n(v.aplicado);
+      if(v.envio === "Full"){
+        var r = fullDe(v);                     // lo que salió de Full vuelve a Full
+        if(r) r.full = n(r.full) + n(v.aplicado);
+      } else if(state.sku[v.sku] !== undefined){
+        state.sku[v.sku] = n(state.sku[v.sku]) + n(v.aplicado);
+      }
     });
     state.ventas = state.ventas.filter(function(v){ return ids.indexOf(v.id) < 0; });
     repartir();
@@ -2357,8 +2386,10 @@
     document.querySelectorAll(".solo-ventas").forEach(function(x){ x.classList.remove("oculto"); });
     render();
     toast(nuevas + " ventas nuevas · " + cambiadas + " actualizadas" +
-      (descontar ? " · stock ajustado en " + r.skus + " SKU" : " · sin tocar el stock") +
-      (r.sinSku ? " · " + r.sinSku + " sin SKU en el catálogo" : ""));
+      (descontar ? " · stock ajustado en " + r.skus + " SKU" +
+        (r.full ? " y " + r.full + " en Full" : "") : " · sin tocar el stock") +
+      (r.sinSku ? " · " + r.sinSku + " sin SKU en el catálogo" : "") +
+      (r.sinFull ? " · " + r.sinFull + " por Full sin unidades cargadas" : ""));
   }
 
   function aplicarImport(){
