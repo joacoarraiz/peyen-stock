@@ -407,7 +407,7 @@
       var raw = localStorage.getItem(KEY);
       if(raw){ var s = JSON.parse(raw); if(s && s.rows && s.rows.length) return s; }
     }catch(e){}
-    return { rows: [], sku: {}, skuAt: {}, savedAt: null };   // los datos reales llegan del servidor
+    return { rows: [], sku: {}, skuAt: {}, revisado: {}, savedAt: null };   // los datos reales llegan del servidor
   }
 
   function n(v){ v = parseInt(v,10); return isNaN(v) ? 0 : v; }
@@ -433,7 +433,14 @@
 
   // Dos publicaciones que suman con el mismo número de stock suelen ser la misma
   // mercadería cargada dos veces: se marca para que la revisen.
-  function revisar(rows){
+  // Los números por los que se levantó el aviso. Si cambian, el aviso vuelve
+  // aunque lo hayan dado por revisado: ya no es la misma situación.
+  function huella(rows){
+    return rows.filter(suma).map(function(r){ return n(r.stock); }).sort().join(",");
+  }
+
+  function revisar(rows, sku){
+    if(sku && (state.revisado || {})[sku] === huella(rows)) return false;
     var v = rows.filter(suma).map(function(r){ return n(r.stock); });
     return v.some(function(x, i){ return x > 0 && v.indexOf(x) !== i; });
   }
@@ -469,7 +476,7 @@
         });
       }
       if(multi && g.rows.length < 2) rows = [];
-      if(rev && !revisar(g.rows)) rows = [];
+      if(rev && !revisar(g.rows, g.sku)) rows = [];
       return { sku: g.sku, rows: rows, all: g.rows };
     }).filter(function(g){ return g.rows.length; });
   }
@@ -604,13 +611,25 @@
     return t.activo + (t.fuera ? '<small>' + t.fuera + " sin sumar</small>" : "");
   }
 
+  // Con el grupo cerrado no se ven las casillas, así que el encabezado "Suma"
+  // quedaba vacío: acá se resume cuántas de las publicaciones entran en el total.
+  function sumanHTML(all){
+    var activas = all.filter(function(r){ return r.estado === "Activa"; });
+    if(!activas.length) return "—";
+    var suman = activas.filter(suma).length;
+    if(suman === activas.length) return activas.length === 1 ? "1 de 1" : "todas";
+    return suman + " de " + activas.length;
+  }
+
   function chipsHTML(sku, all){
     var act = all.filter(function(r){ return r.estado === "Activa"; }).length;
     var chips = '<span class="chip c-count">' + all.length +
                 (all.length === 1 ? " publicación" : " publicaciones") +
                 " · " + act + " activa" + (act === 1 ? "" : "s") + "</span> ";
     if(isCombo(sku)) chips += '<span class="chip c-combo" title="El SKU combina más de un producto">COMBO</span> ';
-    if(revisar(all)) chips += '<span class="chip c-warn" title="Hay dos publicaciones que suman con el mismo stock: puede ser la misma mercadería contada dos veces">REVISAR</span> ';
+    if(revisar(all, sku)) chips += '<button class="chip c-warn" data-act="revisado" ' +
+      'title="Dos publicaciones suman con el mismo stock: puede ser la misma mercadería ' +
+      'contada dos veces. Clic para darlo por revisado y sacar el aviso.">REVISAR ✕</button> ';
     return chips;
   }
 
@@ -624,8 +643,10 @@
         '<td data-chips>' + chipsHTML(g.sku, g.all) + "</td>" +
         '<td class="hint">Stock del SKU</td>' +
         '<td class="total' + (t.activo ? "" : " zero") + '" data-total>' + totalHTML(t) + "</td>" +
-        '<td><button class="btn btn-line btn-sm" data-act="addRow">+ Publicación</button></td>' +
-        '<td><button class="del" data-act="delSku" title="Eliminar SKU completo">✕</button></td>' +
+        '<td class="sumcell hint" data-suman>' + sumanHTML(g.all) + "</td>" +
+        '<td style="white-space:nowrap;text-align:right">' +
+          '<button class="btn btn-line btn-sm" data-act="addRow">+ Publicación</button> ' +
+          '<button class="del" data-act="delSku" title="Eliminar SKU completo">✕</button></td>' +
       "</tr>";
     if(open) g.rows.forEach(function(r){ h += rowHTML(r, g.all); });
     return h + "</tbody>";
@@ -873,7 +894,7 @@
     set("kAct", act.length);
     set("kIna", rows.length - act.length);
     set("kZero", act.filter(function(r){ return !n(r.stock) && !n(r.full); }).length);
-    set("kRev", gs.filter(function(g){ return revisar(g.rows); }).length);
+    set("kRev", gs.filter(function(g){ return revisar(g.rows, g.sku); }).length);
     set("kUni", uni.toLocaleString("es-AR"));
   }
   function set(id, v){ document.getElementById(id).textContent = v; }
@@ -889,6 +910,7 @@
       cell.innerHTML = totalHTML(t);
       cell.className = "total" + (t.activo ? "" : " zero");
       tb.querySelector("[data-chips]").innerHTML = chipsHTML(sku, all);
+      tb.querySelector("[data-suman]").textContent = sumanHTML(all);
     }
     kpis();
   }
@@ -977,8 +999,16 @@
     var tb = e.target.closest("tbody"); var sku = tb ? tb.dataset.sku : null;
     var act = b.dataset.act;
 
+    if(act === "revisado"){
+      var todas = state.rows.filter(function(r){ return r.sku === sku; });
+      if(!state.revisado) state.revisado = {};
+      state.revisado[sku] = huella(todas);
+      markDirty(); render();
+      toast("Aviso sacado de " + sku + ". Vuelve si cambian los números.");
+      return;
+    }
     if(act === "toggle"){
-      if(e.target.closest("[data-act=addRow],[data-act=delSku]")) return;
+      if(e.target.closest("[data-act=addRow],[data-act=delSku],[data-act=revisado]")) return;
       collapsed[sku] = !collapsed[sku]; render(); return;
     }
     if(act === "addRow"){
@@ -1118,7 +1148,8 @@
   // es decirle "sé que hay una versión más nueva y la reemplazo", y corta ahí.
   function empujar(pisar){
     setState("Guardando…");
-    api("PUT", { rows: state.rows, sku: state.sku || {}, skuAt: state.skuAt || {}, base: pisar || base })
+    api("PUT", { rows: state.rows, sku: state.sku || {}, skuAt: state.skuAt || {},
+      revisado: state.revisado || {}, base: pisar || base })
       .then(function(res){
         if(res.status === 409){
           res.json().then(function(d){
@@ -1168,7 +1199,7 @@
         if(dirty && !adoptar){ aviso(true, d.savedAt); return; }
         var venia = base;
         base = d.savedAt;
-        state = { rows: d.rows, sku: d.sku || {}, skuAt: d.skuAt || {}, savedAt: d.savedAt };
+        state = { rows: d.rows, sku: d.sku || {}, skuAt: d.skuAt || {}, revisado: d.revisado || {}, savedAt: d.savedAt };
         dirty = false;
         aviso(false);
         render();

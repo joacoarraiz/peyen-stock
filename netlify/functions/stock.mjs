@@ -25,7 +25,7 @@ export default async (req) => {
   if (req.method === "GET") {
     const saved = await store.get(KEY, { type: "json" });
     // La primera vez no hay nada guardado: se arranca con los datos del último build.
-    if (!saved || !saved.rows) return json({ rows: SEED, sku: {}, skuAt: {}, savedAt: null });
+    if (!saved || !saved.rows) return json({ rows: SEED, sku: {}, skuAt: {}, revisado: {}, savedAt: null });
     return json(saved);
   }
 
@@ -48,7 +48,10 @@ export default async (req) => {
     }
 
     const savedAt = new Date().toISOString();
-    await store.setJSON(KEY, { rows: body.rows, sku: body.sku || {}, skuAt: body.skuAt || {}, savedAt });
+    await store.setJSON(KEY, {
+      rows: body.rows, sku: body.sku || {}, skuAt: body.skuAt || {},
+      revisado: body.revisado || {}, savedAt,
+    });
     return json({ savedAt });
   }
 

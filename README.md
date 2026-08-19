@@ -85,10 +85,15 @@ de dónde sacarles el stock: se tratan como un SKU normal y se cargan a mano.
 ### Stock fantasma
 
 Sumar el stock de todas las publicaciones da **8.926 unidades**; el real es **8.019**. Los
-**907 de diferencia** son publicaciones agrupadas contadas dos veces. En la vista por publicación,
-la casilla **Suma** controla cuáles entran en el total, y **14 SKU** quedan marcados `REVISAR`
-porque tienen dos publicaciones distintas con el mismo stock — puede ser la misma mercadería
-cargada dos veces, y eso lo confirma quien conoce el depósito.
+**907 de diferencia** son publicaciones agrupadas contadas dos veces.
+
+En la vista por publicación, la casilla **Suma** de cada fila controla cuáles entran en el total;
+con el grupo cerrado, la misma columna resume cuántas suman (`1 de 2`, `todas`).
+
+**14 SKU** quedan marcados `REVISAR` porque tienen dos publicaciones distintas con el mismo stock
+— puede ser la misma mercadería cargada dos veces. Eso lo confirma quien conoce el depósito:
+**un clic en el cartel lo saca**. Si después cambian los números por los que se levantó, el aviso
+vuelve solo, porque ya no es la situación que se revisó.
 
 ## Excel
 
