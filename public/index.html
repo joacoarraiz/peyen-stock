@@ -2648,6 +2648,14 @@
     document.getElementById("linkImg").value = "";
     guardarLink();
   });
+  document.getElementById("btnTema").addEventListener("click", function(){
+    var t = document.documentElement.dataset.tema === "oscuro" ? "claro" : "oscuro";
+    document.documentElement.dataset.tema = t;
+    try{ localStorage.setItem("peyen-tema", t); }catch(e){}
+    this.textContent = t === "oscuro" ? "☀" : "◐";
+  });
+  document.getElementById("btnTema").textContent =
+    document.documentElement.dataset.tema === "oscuro" ? "☀" : "◐";
   document.getElementById("btnSave").addEventListener("click", save);
   document.getElementById("btnXlsx").addEventListener("click", bajarExcel);
   document.getElementById("btnCargar").addEventListener("click", function(){

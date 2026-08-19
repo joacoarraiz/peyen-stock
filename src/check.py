@@ -17,6 +17,18 @@ html = (HERE.parent / "public" / "index.html").read_text(encoding="utf-8")
 sueltos = len(re.findall(r"MLA\d{6}", html))
 assert sueltos < 5, f"el HTML quedó con datos adentro ({sueltos} MLA)"
 
+# Todo botón con id tiene que estar referenciado desde el JS. Un listener que se
+# pierde en una edición no rompe nada visible: el botón queda ahí y no hace nada.
+js = html[html.rindex("<script>") + 8:html.rindex("</script>")]
+botones = re.findall(r'<button[^>]*id="([a-zA-Z0-9]+)"', html)
+huerfanos = [b for b in botones if f'"{b}"' not in js]
+assert not huerfanos, f"botones sin código que los use: {huerfanos}"
+
+# Ningún id usado desde el JS puede faltar en el HTML.
+usados = set(re.findall(r'getElementById\("([a-zA-Z0-9]+)"\)', js))
+faltan = [i for i in usados if f'id="{i}"' not in html]
+assert not faltan, f"el JS busca ids que no existen: {faltan}"
+
 by_sku = collections.defaultdict(list)
 for r in rows:
     by_sku[r["sku"]].append(r)
