@@ -20,7 +20,7 @@ XLSX = Path(sys.argv[1]) if len(sys.argv) > 1 else Path(
 LOGO = HERE / "peyen.png"
 
 C = {"family": 0, "mla": 1, "variation": 3, "sku": 4, "title": 5,
-     "flex": 7, "full": 8, "status": 27}
+     "flex": 7, "full": 8, "price": 9, "status": 27}
 
 
 def num(v):
@@ -57,6 +57,9 @@ for r in raw:
         "title": (r[C["title"]] or "").strip(),
         "stock": num(r[C["flex"]]),
         "full": num(r[C["full"]]),
+        "price": num(r[C["price"]]),
+        "url": "",          # link a la publicación, se genera o se carga a mano
+        "img": "",          # foto: solo manual, la API de ML pide credenciales
         "estado": "Activa" if (r[C["status"]] or status_of.get(r[C["mla"]])) == "Activa" else "Inactiva",
         # Publications sharing a FAMILY_ID are grouped by ML: same merchandise, same stock.
         "link": str(r[C["family"]]) if r[C["family"]] else "",

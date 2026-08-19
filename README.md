@@ -2,7 +2,8 @@
 
 Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Tres vistas:
 
-- **Por SKU** — se carga el stock físico de cada SKU y se reparte solo entre sus publicaciones.
+- **Por SKU** — se carga el stock físico y el precio de cada SKU. El stock se reparte entre sus
+  publicaciones; el precio baja igual a todas las activas.
 - **Por publicación** — cada MLA con su título, estado y stock, agrupado por SKU.
 - **En Full** — la mercadería que está en el depósito de Mercado Libre, editable aparte.
 
@@ -60,10 +61,33 @@ muestra como *«Sincronizada con #…»*— **el stock no se divide entre ellas*
 mostrado dos veces. Se reconocen por el `FAMILY_ID` del export y cuentan como **un solo
 consumidor** en el reparto.
 
+Llevan el cartel **AGRUPADA**, y un clic lo separa si la agrupación está mal — eso queda marcado
+para que una importación nueva no vuelva a unirlas. Al separar una, si el grupo que deja se queda
+sin ninguna que sume, la primera que queda pasa a contar: si no, su stock se volvería invisible.
+
 Verificado sobre este catálogo: los **41** productos de catálogo con más de una publicación
-vienen agrupados por `FAMILY_ID`, ninguno queda suelto. `SF-100` tiene 2 publicaciones
+vienen agrupados por `FAMILY_ID`, ninguno queda suelto. En los 45 grupos el **stock coincide
+siempre**, pero el **precio difiere en 12** (de 0,4% a 21,3%): es la publicación que ofrece cuotas,
+que sale más cara. Por eso el precio no se empareja dentro del grupo, se marca con **OTRO PRECIO**.
+Tampoco hay ningún caso de mismo SKU y mismo título en familias distintas, así que no quedan
+publicaciones que ML debería haber agrupado y no agrupó. `SF-100` tiene 2 publicaciones
 sincronizadas y con 7 unidades las dos muestran 7; `K-7806/S` tiene 4 publicaciones distintas
 (distinto vehículo) y con 12 unidades cada una recibe 3.
+
+### Precio, link y foto
+
+El **precio** viene de los dos Excel (`PRICE` en el de ML, `PRECIO ML` en el del cliente) y se
+edita por publicación o por SKU. La fila del SKU muestra un precio si todas coinciden, o el rango.
+
+**Generar links** arma el link de todas las publicaciones a partir del número de MLA, con el
+formato estándar `MLA-<numero>-<titulo>-_JM`. Las que ya tenían link cargado no se tocan, y
+cualquiera se corrige a mano desde el botón 🔗 de su fila.
+
+La **foto es siempre manual**: se pega la URL de la imagen en ese mismo botón. No se puede
+automatizar — verificado en agosto de 2026: la API de Mercado Libre devuelve 403 sin credenciales
+(`api.mercadolibre.com/items/...` y `/sites/MLA/search`), y la página pública redirige a un muro
+anti-bot tanto desde un navegador automatizado como desde `curl`. Se destrabaría con una app de ML
+con credenciales OAuth: con eso la API devuelve `permalink` y `pictures` de una.
 
 ### La mercadería en Full
 

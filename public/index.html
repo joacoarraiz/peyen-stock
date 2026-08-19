@@ -140,6 +140,20 @@
   .rep small{display:block;font-size:10px;font-weight:600;color:var(--muted)}
   .desc{font-size:11.5px;color:var(--muted)}
 
+  .pubcell{display:flex;align-items:center;gap:5px}
+  .foto{border-radius:4px;object-fit:cover;background:var(--surface-3);flex:none}
+  .lnk{color:var(--info);text-decoration:none;font-family:ui-monospace,Menlo,Consolas,monospace;
+       font-size:11.5px;padding:3px 5px;border-radius:5px;width:132px;display:inline-block}
+  .lnk:hover{text-decoration:underline;background:var(--surface-3)}
+  .lnkbtn{background:transparent;border:0;opacity:.35;font-size:11px;padding:2px 4px;
+          border-radius:4px;line-height:1}
+  .lnkbtn:hover{opacity:1;background:var(--surface-3)}
+  .pre{width:88px;text-align:right;border:1px solid var(--line);border-radius:5px;padding:3px 6px;
+       font-weight:600;background:var(--surface);color:var(--ink)}
+  .pre:hover{border-color:var(--muted)}
+  .pre:focus{border-color:var(--red);outline:none}
+  .fotogrande{width:100%;max-width:190px;border-radius:var(--r);margin-bottom:8px;
+              border:1px solid var(--line)}
   .sum{width:15px;height:15px;accent-color:var(--red);cursor:pointer}
   .sumcell{text-align:center}
   .chips{margin-top:1px;padding-left:5px}
@@ -285,6 +299,7 @@
   </select>
   <button class="btn btn-line solo-sku" id="btnVisto">Marcar revisados</button>
   <button class="btn btn-line" id="btnToggle">Contraer todo</button>
+  <button class="btn btn-line" id="btnLinks">Generar links</button>
   <button class="btn btn-line" id="btnAddSku">+ Agregar publicación</button>
 </div>
 
@@ -292,7 +307,7 @@
 
 <div class="tabs">
   <button class="tab on" data-vista="pub">Por publicación</button>
-  <button class="tab" data-vista="sku">Por SKU · cargar stock</button>
+  <button class="tab" data-vista="sku">Por SKU</button>
   <button class="tab" data-vista="full">En Full</button>
 </div>
 
@@ -361,6 +376,28 @@
   </div>
 </div>
 
+<div class="modal" id="mLink" hidden>
+  <div class="box" style="width:min(560px,100%)">
+    <h2 id="linkTitulo">Link y foto</h2>
+    <div class="body">
+      <img id="linkFoto" class="fotogrande" alt="" hidden>
+      <div class="campos" style="grid-template-columns:1fr">
+        <div class="campo"><label>Link a la publicación</label>
+          <input id="linkUrl" placeholder="https://articulo.mercadolibre.com.ar/MLA-..."></div>
+        <div class="campo"><label>Foto (URL de la imagen)</label>
+          <input id="linkImg" placeholder="Clic derecho sobre la foto en Mercado Libre → Copiar dirección de imagen"></div>
+      </div>
+      <p class="hint" style="margin-top:10px">El link se puede generar solo para todas desde
+        <b>Generar links</b>. La foto va a mano: Mercado Libre no deja traerlas en lote.</p>
+    </div>
+    <div class="foot2">
+      <button class="btn btn-line" id="linkBorrar">Quitar</button>
+      <button class="btn btn-line" id="linkCancel">Cancelar</button>
+      <button class="btn btn-primary" id="linkOk">Guardar</button>
+    </div>
+  </div>
+</div>
+
 <div class="modal" id="mNuevo" hidden>
   <div class="box" style="width:min(560px,100%)">
     <h2 id="nuevoTitulo">Agregar publicación</h2>
@@ -372,6 +409,7 @@
         <div class="campo" id="cTitulo"><label>Título</label>
           <input id="nTitulo" placeholder="Como aparece en Mercado Libre"></div>
         <div class="campos" style="gap:10px">
+          <div class="campo"><label>Precio</label><input id="nPrecio" type="number" min="0" value="0"></div>
           <div class="campo"><label>Stock</label><input id="nStock" type="number" min="0" value="0"></div>
           <div class="campo" id="cEstado"><label>Estado</label>
             <select id="nEstado"><option>Activa</option><option>Inactiva</option></select></div>
@@ -588,23 +626,69 @@
     var shared = linkedCount(all, r) > 1;
     var off = r.estado !== "Activa";
     var chips = "";
-    if(shared) chips += '<span class="chip c-link" title="Mercado Libre agrupa estas publicaciones: comparten la misma mercadería, por eso suman una sola vez">COMPARTE STOCK</span> ';
+    if(shared){
+      // el stock siempre coincide dentro del grupo, el precio no: la publicación con
+      // cuotas sale más cara, así que la diferencia se avisa en vez de emparejarla
+      var hermanas = all.filter(function(x){ return x.link === r.link; });
+      var precios = hermanas.map(function(x){ return n(x.price); }).filter(Boolean);
+      var dispar = precios.length > 1 && Math.min.apply(null, precios) !== Math.max.apply(null, precios);
+      chips += '<button class="chip c-link" data-act="desagrupar" ' +
+        'title="Mercado Libre las agrupa: misma publicación, cambia la financiación o alguna ' +
+        'condición de venta. El stock es el mismo' +
+        (dispar ? " y el precio distinto es normal: la que ofrece cuotas sale más cara" : "") + '. ' +
+        'Clic para separarla si esta agrupación está mal.">' +
+        (dispar ? "AGRUPADA · OTRO PRECIO ✕" : "AGRUPADA ✕") + "</button> ";
+    }
     if(r.variante) chips += '<span class="chip c-var" title="Es una variante dentro de la misma publicación">VARIANTE</span> ';
     if(n(r.full)) chips += '<span class="chip c-full">' + n(r.full) + ' EN FULL</span> ';
     if(!n(r.stock) && !n(r.full) && !off) chips += '<span class="chip c-zero">SIN STOCK</span> ';
 
+    var mla = r.url
+      ? '<a class="mla lnk" href="' + esc(r.url) + '" target="_blank" rel="noopener" ' +
+        'title="Abrir en Mercado Libre">' + esc(r.mla) + "</a>"
+      : '<input class="mla" data-f="mla" value="' + esc(r.mla) + '" spellcheck="false">';
+
     return '<tr class="pub' + (off ? " off" : "") + '" data-id="' + esc(r.id) + '">' +
-      '<td><input class="mla" data-f="mla" value="' + esc(r.mla) + '" spellcheck="false"></td>' +
+      '<td class="pubcell">' + fotoHTML(r, 22) + mla +
+        '<button class="lnkbtn" data-act="link" title="' +
+        (r.url ? "Cambiar el link o la foto" : "Cargar el link y la foto") + '">🔗</button></td>' +
       '<td><input class="t-in" data-f="title" value="' + esc(r.title) + '">' +
         (chips ? '<div class="chips">' + chips + "</div>" : "") + "</td>" +
       '<td><select class="est ' + (off ? "off" : "on") + '" data-f="estado">' +
         '<option' + (off ? "" : " selected") + '>Activa</option>' +
         '<option' + (off ? " selected" : "") + '>Inactiva</option></select></td>' +
+      '<td style="text-align:right"><input class="pre" data-f="price" type="number" min="0" step="1" value="' + n(r.price) + '"></td>' +
       '<td style="text-align:right"><input class="stk" data-f="stock" type="number" min="0" value="' + n(r.stock) + '"></td>' +
       '<td class="sumcell"><input class="sum" type="checkbox" data-f="cuenta"' +
         (r.cuenta !== false ? " checked" : "") +
         ' title="Destildala si esta publicación repite mercadería ya contada en otra"></td>' +
       '<td><button class="del" data-act="delRow" title="Eliminar publicación">✕</button></td></tr>';
+  }
+
+  // La foto es siempre manual: la API de Mercado Libre pide credenciales y la página
+  // pública corta con un muro anti-bot, así que no hay forma de traerlas en lote.
+  function fotoHTML(r, px){
+    if(!r.img) return "";
+    return '<img class="foto" src="' + esc(r.img) + '" alt="" loading="lazy" ' +
+      'style="width:' + px + "px;height:" + px + 'px" onerror="this.remove()">';
+  }
+
+  function conFoto(rows){
+    return rows.filter(function(r){ return r.img; })[0] || null;
+  }
+
+  // Precio del SKU: uno solo si todas coinciden, si no el rango.
+  function precioHTML(rows){
+    var v = rows.filter(function(r){ return r.estado === "Activa" && n(r.price); })
+                .map(function(r){ return n(r.price); });
+    if(!v.length) return '<span class="hint">—</span>';
+    var min = Math.min.apply(null, v), max = Math.max.apply(null, v);
+    if(min === max) return plata(min);
+    return plata(min) + '<small>hasta ' + plata(max) + "</small>";
+  }
+
+  function plata(v){
+    return "$" + n(v).toLocaleString("es-AR");
   }
 
   function totalHTML(t){
@@ -639,9 +723,12 @@
 
     var h = '<tbody class="grp" data-sku="' + esc(g.sku) + '">' +
       '<tr class="sku" data-act="toggle">' +
-        '<td><span class="caret">' + (open ? "▼" : "►") + '</span> <span class="skuname">' + esc(g.sku || "(sin SKU)") + '</span></td>' +
+        '<td class="pubcell"><span class="caret">' + (open ? "▼" : "►") + "</span>" +
+          fotoHTML(conFoto(g.all) || {}, 20) +
+          '<span class="skuname">' + esc(g.sku || "(sin SKU)") + "</span></td>" +
         '<td data-chips>' + chipsHTML(g.sku, g.all) + "</td>" +
         '<td class="hint">Stock del SKU</td>' +
+        '<td class="rep" data-precio>' + precioHTML(g.all) + "</td>" +
         '<td class="total' + (t.activo ? "" : " zero") + '" data-total>' + totalHTML(t) + "</td>" +
         '<td class="sumcell hint" data-suman>' + sumanHTML(g.all) + "</td>" +
         '<td style="white-space:nowrap;text-align:right">' +
@@ -697,6 +784,14 @@
       ' <b>· ' + hace(c.t) + "</b></span>";
   }
 
+  // Precio del SKU = el de sus publicaciones activas, si todas coinciden.
+  function precioSku(sku){
+    var v = state.rows.filter(function(r){
+      return r.sku === sku && r.estado === "Activa" && n(r.price);
+    }).map(function(r){ return n(r.price); });
+    return v.length ? Math.max.apply(null, v) : 0;
+  }
+
   function renderSku(){
     var u = universoSku(), c = consumidores(), uso = c.uso;
     var q = document.getElementById("q").value.trim().toLowerCase();
@@ -722,6 +817,7 @@
 
     var cambiados = Object.keys(at).length;
     var h = '<table><thead><tr><th>SKU</th><th>Publicaciones que lo usan</th>' +
+      '<th style="text-align:right">Precio</th>' +
       '<th style="text-align:right">Stock físico</th>' +
       '<th style="text-align:right">Repartido</th><th>Último cambio</th></tr></thead><tbody>';
 
@@ -733,6 +829,8 @@
         '<td class="desc">' + (cant ? cant + (cant === 1 ? " publicación activa" : " publicaciones activas") +
             " · le toca " + Math.floor(fis / cant) + " a cada una"
           : '<span class="chip c-zero">SIN PUBLICACIONES ACTIVAS</span>') + "</td>" +
+        '<td style="text-align:right"><input class="pre" type="number" min="0" data-sku-precio value="' +
+          precioSku(sku) + '" title="Cambia el precio de todas las publicaciones activas de este SKU"></td>' +
         '<td style="text-align:right"><input class="fis" type="number" min="0" data-sku-stock value="' + fis + '"></td>' +
         '<td class="rep" data-rep>' + pub +
           (sobra > 0 ? "<small>sobran " + sobra + "</small>" : "") + "</td>" +
@@ -740,7 +838,7 @@
     });
 
     if(combos.length){
-      h += '<tr><td colspan="5" style="background:#f7f9fc;padding:12px 12px 8px">' +
+      h += '<tr><td colspan="6" style="background:var(--surface-2);padding:10px 12px 7px">' +
         '<b style="color:var(--navy)">Combos</b> <span class="desc">— no se cargan a mano: ' +
         "se calculan con el mínimo entre sus partes, así que si una parte queda en 0 el combo queda en 0.</span></td></tr>";
       combos.forEach(function(sku){
@@ -759,6 +857,7 @@
           '<td class="desc">' + ps.map(function(p, i){
               return esc(p) + " (" + valores[i] + ")";
             }).join(" + ") + " · " + cant + (cant === 1 ? " publicación" : " publicaciones") + "</td>" +
+          '<td class="rep">' + precioHTML(state.rows.filter(function(x){ return x.sku === sku; })) + "</td>" +
           '<td class="desc" style="text-align:right">se calcula</td>' +
           '<td class="rep" data-rep>' + Math.min.apply(null, valores) + "</td><td></td></tr>";
       });
@@ -876,6 +975,7 @@
     var gs = filtered();
     var head = '<table><thead><tr>' +
       "<th>SKU / Publicación</th><th>Título</th><th>Estado</th>" +
+      '<th style="text-align:right">Precio</th>' +
       '<th style="text-align:right">Stock</th><th class="sumcell">Suma</th><th></th></tr></thead>';
     document.getElementById("app").innerHTML = gs.length
       ? head + gs.map(groupHTML).join("") + "</table>"
@@ -926,6 +1026,17 @@
   }
 
   document.getElementById("app").addEventListener("input", function(e){
+    // vista por SKU: el precio baja igual a todas las publicaciones activas del SKU
+    var pre = e.target.closest("[data-sku-precio]");
+    if(pre){
+      var skuP = e.target.closest("tr.skurow").dataset.sku;
+      state.rows.forEach(function(r){
+        if(r.sku === skuP && r.estado === "Activa") r.price = n(pre.value);
+      });
+      markDirty();
+      return;
+    }
+
     // vista por SKU: cargan el stock físico y se reparte solo entre las publicaciones
     var fis = e.target.closest("[data-sku-stock]");
     if(fis){
@@ -974,6 +1085,11 @@
         }
       });
       refreshSku(r.sku);
+    } else if(f === "price"){
+      r.price = n(inp.value);
+      var tbp = e.target.closest("tbody.grp");
+      if(tbp) tbp.querySelector("[data-precio]").innerHTML =
+        precioHTML(state.rows.filter(function(x){ return x.sku === r.sku; }));
     } else if(f === "cuenta"){
       r.cuenta = inp.checked;
       refreshSku(r.sku);
@@ -999,6 +1115,26 @@
     var tb = e.target.closest("tbody"); var sku = tb ? tb.dataset.sku : null;
     var act = b.dataset.act;
 
+    if(act === "link"){
+      abrirLink(e.target.closest("tr.pub").dataset.id);
+      return;
+    }
+    if(act === "desagrupar"){
+      var dr = find(e.target.closest("tr.pub").dataset.id);
+      if(dr){
+        var grupo = dr.link;
+        dr.link = "";
+        dr.sep = true;          // que una importación nueva no vuelva a agruparla
+        dr.cuenta = true;
+        // el grupo que deja puede quedar sin ninguna que sume: su stock se volvería
+        // invisible, así que la primera que queda pasa a contar
+        var restan = state.rows.filter(function(x){ return x.sku === dr.sku && x.link === grupo; });
+        if(restan.length && !restan.some(function(x){ return x.cuenta !== false; })) restan[0].cuenta = true;
+        markDirty(); render();
+        toast(dr.mla + " separada del grupo: ahora cuenta aparte.");
+      }
+      return;
+    }
     if(act === "revisado"){
       var todas = state.rows.filter(function(r){ return r.sku === sku; });
       if(!state.revisado) state.revisado = {};
@@ -1043,7 +1179,8 @@
   function newRow(sku){
     return { id: "n" + Date.now() + Math.random().toString(36).slice(2,6),
              sku: sku, mla: "", title: "", stock: 0, full: 0,
-             estado: "Activa", link: "", variante: false, cuenta: true };
+             estado: "Activa", link: "", variante: false, cuenta: true,
+             price: 0, url: "", img: "" };
   }
 
   // Alta con formulario: SKU suelto (solo stock) o publicación completa.
@@ -1059,6 +1196,7 @@
     document.getElementById("nMla").value = "";
     document.getElementById("nTitulo").value = "";
     document.getElementById("nStock").value = 0;
+    document.getElementById("nPrecio").value = 0;
     document.getElementById("nEstado").value = "Activa";
     document.getElementById("nuevoNota").textContent = soloSku
       ? "El stock que cargues se reparte solo entre las publicaciones que usen este SKU."
@@ -1086,6 +1224,7 @@
       r.mla = mla;
       r.title = document.getElementById("nTitulo").value.trim();
       r.stock = stock;
+      r.price = n(document.getElementById("nPrecio").value);
       r.estado = document.getElementById("nEstado").value;
       state.rows.push(r);
       collapsed[sku] = false;
@@ -1106,6 +1245,67 @@
   function cerrarNuevo(){
     document.getElementById("mNuevo").hidden = true;
     document.body.classList.remove("locked");
+  }
+
+  /* ---------- link a la publicación y foto ---------- */
+  var linkId = null;
+
+  // Formato estándar de Mercado Libre: MLA-<numero>-<titulo>-_JM. Resuelve por el
+  // número, el texto del medio es solo para que la URL se lea.
+  function urlDe(r){
+    var num = String(r.mla || "").replace(/^MLA/i, "").trim();
+    if(!/^\d+$/.test(num)) return "";
+    var slug = String(r.title || "").toLowerCase()
+      .normalize("NFD").replace(/[̀-ͯ]/g, "")
+      .replace(/[^a-z0-9]+/g, "-").replace(/^-|-$/g, "").slice(0, 60).replace(/-$/, "");
+    return "https://articulo.mercadolibre.com.ar/MLA-" + num + (slug ? "-" + slug : "") + "-_JM";
+  }
+
+  function generarLinks(){
+    var sin = state.rows.filter(function(r){ return !r.url && urlDe(r); });
+    if(!sin.length){ toast("Todas las publicaciones ya tienen link"); return; }
+    if(!confirm("Se genera el link de " + sin.length + " publicaciones a partir del número de MLA.\n\n" +
+                "Las que ya tienen link cargado no se tocan.")) return;
+    sin.forEach(function(r){ r.url = urlDe(r); });
+    markDirty(); render();
+    toast(sin.length + " links generados. Probá uno; si no abre, corregilo a mano.");
+  }
+
+  function abrirLink(id){
+    linkId = id;
+    var r = find(id);
+    if(!r) return;
+    document.getElementById("linkTitulo").textContent = r.mla || "Publicación nueva";
+    document.getElementById("linkUrl").value = r.url || "";
+    document.getElementById("linkImg").value = r.img || "";
+    var img = document.getElementById("linkFoto");
+    img.hidden = !r.img;
+    if(r.img) img.src = r.img;
+    document.getElementById("mLink").hidden = false;
+    document.body.classList.add("locked");
+    document.getElementById("linkUrl").focus();
+  }
+
+  function cerrarLink(){
+    document.getElementById("mLink").hidden = true;
+    document.body.classList.remove("locked");
+    linkId = null;
+  }
+
+  function guardarLink(){
+    var r = find(linkId);
+    if(r){
+      var u = document.getElementById("linkUrl").value.trim();
+      var i = document.getElementById("linkImg").value.trim();
+      // sin http:// el navegador lo tomaría como una ruta del propio sitio
+      if(u && !/^https?:\/\//i.test(u)) u = "https://" + u;
+      if(i && !/^https?:\/\//i.test(i)) i = "https://" + i;
+      r.url = u;
+      r.img = i;
+      markDirty();
+    }
+    cerrarLink();
+    render();
   }
 
   /* ---------- guardar ---------- */
@@ -1464,13 +1664,16 @@
       // que es la mercadería que está en el depósito de ML, no la de Peyen.
       { k: "stock",  t: "Stock",   alias: ["STOCK_FLEX","EN MI DEPOSITO","STOCK"],
         evitar: ["FULL","BODEGA"] },
+      { k: "price",  t: "Precio",  alias: ["PRICE","PRECIO ML","PRECIO"],
+        evitar: ["MAYORISTA","LISTA","COSTO","TIERED"] },
       // sin el agrupador de ML vuelven las unidades fantasma: es estructural, no opcional
       { k: "link",   t: "Agrupador de ML", alias: ["FAMILY_ID"], estructural: true }
     ],
     sku: [
       { k: "sku",   t: "SKU",   alias: ["CODIGO","SKU"], clave: true },
       { k: "stock", t: "Stock", alias: ["STOCK"], ultima: true, evitar: ["PRECIO","LISTA"] },
-      { k: "title", t: "Descripción", alias: ["DESCRIPCION 1","DESCRIPCION"] }
+      { k: "title", t: "Descripción", alias: ["DESCRIPCION 1","DESCRIPCION"] },
+      { k: "price", t: "Precio", alias: ["PRECIO ML","PRECIO"], evitar: ["LISTA","FINAL"] }
     ]
   };
 
@@ -1623,6 +1826,7 @@
         i: i, sku: sku, mla: mla, title: val("title"), estado: val("estado"),
         link: val("link"),
         stock: m.stock >= 0 ? n(r[m.stock]) : 0,
+        price: m.price >= 0 ? String(r[m.price] == null ? "" : r[m.price]).trim() : "",
         crudo: m.stock >= 0 ? String(r[m.stock] == null ? "" : r[m.stock]).trim() : "",
         existe: imp.tipo === "pub" ? !!(porMla[mla + "||" + sku] || porMla[mla]) : !!porSku[sku],
         motivo: motivo
@@ -1688,21 +1892,27 @@
       if(imp.tipo === "sku"){
         marcarCambio(f.sku, state.sku[f.sku], f.stock);
         state.sku[f.sku] = n(f.stock);
+        // el precio del SKU baja a sus publicaciones activas
+        if(imp.pisar.price && f.price !== "") state.rows.forEach(function(r){
+          if(r.sku === f.sku && r.estado === "Activa") r.price = n(f.price);
+        });
         if(f.existe) act++; else nue++;
         return;
       }
       var r = porMla[f.mla + "||" + f.sku] || porMla[f.mla];
       if(r){
         if(imp.pisar.stock && f.crudo !== "") r.stock = n(f.stock);
+        if(imp.pisar.price && f.price !== "") r.price = n(f.price);
         if(imp.pisar.title && f.title) r.title = f.title;
         if(imp.pisar.estado && f.estado) r.estado = normal(f.estado) === "INACTIVA" ? "Inactiva" : "Activa";
-        if(f.link) r.link = f.link;
+        if(f.link && !r.sep) r.link = f.link;
         act++;
         tocados[r.sku + "||" + r.link] = true;
       } else {
         var nuevo = {
           id: f.mla + (f.sku ? "-" + f.sku : ""), sku: f.sku || "(sin SKU)", mla: f.mla,
-          title: f.title, stock: n(f.stock), full: 0,
+          title: f.title, stock: n(f.stock), full: 0, price: n(f.price),
+          url: "", img: "",
           estado: normal(f.estado) === "INACTIVA" ? "Inactiva" : "Activa",
           link: f.link || "", variante: false, cuenta: true
         };
@@ -1801,7 +2011,7 @@
       vista = b.dataset.vista;
       document.querySelectorAll(".tab").forEach(function(x){ x.classList.toggle("on", x === b); });
       // los filtros de publicaciones solo aplican a la vista de publicaciones
-      document.querySelectorAll(".chk:not(.solo-sku), #fEstado, #btnToggle")
+      document.querySelectorAll(".chk:not(.solo-sku), #fEstado, #btnToggle, #btnLinks")
         .forEach(function(x){ x.style.display = vista === "pub" ? "" : "none"; });
       document.querySelectorAll(".solo-sku")
         .forEach(function(x){ x.style.display = vista === "sku" ? "" : "none"; });
@@ -1841,6 +2051,14 @@
   });
   document.getElementById("btnTema").textContent =
     document.documentElement.dataset.tema === "oscuro" ? "☀" : "◐";
+  document.getElementById("btnLinks").addEventListener("click", generarLinks);
+  document.getElementById("linkCancel").addEventListener("click", cerrarLink);
+  document.getElementById("linkOk").addEventListener("click", guardarLink);
+  document.getElementById("linkBorrar").addEventListener("click", function(){
+    document.getElementById("linkUrl").value = "";
+    document.getElementById("linkImg").value = "";
+    guardarLink();
+  });
   document.getElementById("btnSave").addEventListener("click", save);
   document.getElementById("btnXlsx").addEventListener("click", bajarExcel);
   document.getElementById("btnCargar").addEventListener("click", function(){
