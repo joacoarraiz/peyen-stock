@@ -163,6 +163,25 @@ de lo facturado a lo cobrado restando comisión de ML, envíos e impuestos. Sobr
 2026: **$51.596.837 facturados, $39.600.013 cobrados (76%)**, con $8.880.102 de comisión,
 $2.573.892 de envíos y $1.029.981 de impuestos.
 
+**Los paquetes de varios productos guardan la plata en el encabezado**, no en los productos:
+la fila «Paquete de N productos» trae los importes de toda la orden y los productos que la
+siguen vienen con las columnas de plata vacías. Se reparte entre ellos según su precio unitario,
+que suma exacto al total del encabezado en los 8 paquetes del período — son $893.447 que si no
+se perderían.
+
+**Por qué el número no coincide con el panel de Mercado Libre.** El resumen cuenta **solo ventas
+concretadas**; ML incluye devoluciones y canceladas en *Ventas brutas*. Y el reporte descargado
+llega hasta el día de la exportación, no hasta hoy. Agosto de 2026, con el reporte del 19:
+
+| | ventas | unidades | facturado |
+|---|---|---|---|
+| Concretadas (lo que muestra el resumen) | 74 | 95 | $5.489.566 |
+| Devueltas y canceladas | 5 | 5 | $323.373 |
+| Todo, hasta el 18 | 79 | 100 | $5.812.939 |
+| Panel de ML, 1 al 19 | 88 | 114 | $6.287.617 |
+
+La diferencia que queda —9 ventas, $474.678— es el día 19, que el archivo no trae.
+
 El `Total (ARS)` que informa Mercado Libre no siempre reproduce exacto la suma de sus propios
 componentes —0,12% de diferencia en este período—, así que esa diferencia va como fila propia
 (*Otros ajustes de ML*) y la columna cierra en vez de quedar "casi".

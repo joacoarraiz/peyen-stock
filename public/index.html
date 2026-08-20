@@ -2399,7 +2399,9 @@
       { k: "imp",    t: "Impuestos",  alias: ["IMPUESTOS"] },
       { k: "desc",   t: "Descuentos", alias: ["DESCUENTOS Y BONIFICACIONES"] },
       { k: "reemb",  t: "Reembolsos", alias: ["ANULACIONES Y REEMBOLSOS (ARS)","ANULACIONES Y REEMBOLSOS"] },
-      { k: "neto",   t: "Total",      alias: ["TOTAL (ARS)"] }
+      { k: "neto",   t: "Total",      alias: ["TOTAL (ARS)"] },
+      { k: "unit",   t: "Precio unitario",
+        alias: ["PRECIO UNITARIO DE VENTA DE LA PUBLICACION (ARS)","PRECIO UNITARIO DE VENTA"] }
     ],
     sku: [
       { k: "sku",   t: "SKU",   alias: ["CODIGO","SKU"], clave: true },
@@ -2623,16 +2625,29 @@
     (state.ventas || []).forEach(function(v){ porNum[v.num] = v; });
 
     imp.filas = [];
+    var paquete = null;
     for(var i = imp.head + 1; i < h.filas.length; i++){
       var r = h.filas[i];
       if(!r) continue;
       var val = function(k){ return m[k] >= 0 ? String(r[m[k]] == null ? "" : r[m[k]]).trim() : ""; };
+      var col0 = function(k){ return m[k] >= 0 ? dec(r[m[k]]) : 0; };
       var num = val("num"), sku = val("sku"), mla = val("mla");
       if(!num) continue;
       var estado = val("estado");
       var motivo = "";
-      // el encabezado "Paquete de N productos" no trae producto: sus items vienen aparte
-      if(!sku && !mla) motivo = "encabezado de paquete";
+      // El encabezado "Paquete de N productos" no trae producto pero SÍ la plata de
+      // toda la orden; sus items vienen en las filas siguientes con los importes en
+      // blanco. Se guarda para repartirla entre ellos.
+      if(!sku && !mla){
+        motivo = "encabezado de paquete";
+        var cuantos = parseInt((estado.match(/(\d+)\s*producto/) || [])[1], 10) || 2;
+        paquete = {
+          resto: cuantos, total: col0("bruto"),
+          comision: col0("cargo") + col0("fijo") + col0("cuotas"),
+          envio: col0("envIn") + col0("envOut"),
+          impuestos: col0("imp"), otros: col0("desc") + col0("reemb"), neto: col0("neto")
+        };
+      }
       var ya = porNum[num];
       var clase = claseVenta(estado);
       var col = function(k){ return m[k] >= 0 ? dec(r[m[k]]) : 0; };
@@ -2646,15 +2661,30 @@
         otros: col("desc") + col("reemb"),
         neto: col("neto")
       };
+      // producto de un paquete: su parte sale del precio unitario, y los costos del
+      // encabezado se reparten en esa misma proporción
+      var unit = col("unit") * (n(r[m.unid]) || 1);
+      if(!plata.bruto && paquete && paquete.resto > 0 && unit && sku){
+        var parte = paquete.total ? unit / paquete.total : 0;
+        plata = {
+          bruto: unit,
+          comision: paquete.comision * parte, envio: paquete.envio * parte,
+          impuestos: paquete.impuestos * parte, otros: paquete.otros * parte,
+          neto: paquete.neto * parte
+        };
+        paquete.resto--;
+        if(!paquete.resto) paquete = null;
+      }
       imp.filas.push({
         i: i, num: num, sku: sku, mla: mla, title: val("title"),
         fecha: fechaVenta(val("fecha")), unidades: n(r[m.unid]) || 1,
         envio: envioVenta(val("envio")), estado: estado, clase: clase,
         plata: plata,
         existe: !!ya,
-        // una venta ya cargada sin importes también se actualiza: son los que faltaban
+        // una venta ya cargada sin importes también se actualiza: son los que faltaban.
+        // "sin importes" es tanto el campo ausente como el que quedó en cero
         cambia: !!ya && (ya.clase !== clase || n(ya.unidades) !== (n(r[m.unid]) || 1) ||
-                (ya.bruto === undefined && plata.bruto !== 0)),
+                (!dec(ya.bruto) && plata.bruto !== 0)),
         motivo: motivo
       });
     }
