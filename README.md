@@ -1,7 +1,8 @@
 # Peyen · Control de stock por SKU
 
-Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Cuatro vistas:
+Planilla web con clave para manejar el stock de Peyen en Mercado Libre. Cinco vistas:
 
+- **Resumen** — ventas por mes, plata, más vendidos y alertas de stock.
 - **Por SKU** — se carga el stock físico y el precio de cada SKU. El stock se reparte entre sus
   publicaciones; el precio baja igual a todas sus publicaciones, activas o no.
 - **Por publicación** — cada MLA con su título, estado y stock, agrupado por SKU.
@@ -154,6 +155,25 @@ con el grupo cerrado, la misma columna resume cuántas suman (`1 de 2`, `todas`)
 — puede ser la misma mercadería cargada dos veces. Eso lo confirma quien conoce el depósito:
 **un clic en el cartel lo saca**. Si después cambian los números por los que se levantó, el aviso
 vuelve solo, porque ya no es la situación que se revisó.
+
+## Resumen
+
+Ventas del mes en curso, facturado del período, y **qué queda de lo facturado**: el desglose va
+de lo facturado a lo cobrado restando comisión de ML, envíos e impuestos. Sobre enero-agosto de
+2026: **$51.596.837 facturados, $39.600.013 cobrados (76%)**, con $8.880.102 de comisión,
+$2.573.892 de envíos y $1.029.981 de impuestos.
+
+El `Total (ARS)` que informa Mercado Libre no siempre reproduce exacto la suma de sus propios
+componentes —0,12% de diferencia en este período—, así que esa diferencia va como fila propia
+(*Otros ajustes de ML*) y la columna cierra en vez de quedar "casi".
+
+También: ventas por mes con el mes en curso destacado, torta de Full contra Mercado Envíos, top
+10 de más vendidos y las publicaciones **sin stock o por agotarse**. Esa última cuenta las que
+tienen una unidad o menos, no solo las que están en cero: ML pausa las publicaciones al agotarse,
+así que "0 sin stock" no diría nada útil.
+
+Los gráficos son SVG escrito a mano, sin librerías, y toman las variables de color: funcionan
+igual en claro y en oscuro.
 
 ## Ventas
 

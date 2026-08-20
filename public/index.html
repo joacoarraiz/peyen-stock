@@ -227,6 +227,42 @@
   .rcard.new b{color:var(--ok)}
   .rcard.skip b{color:var(--muted)}
 
+  /* ---------- dashboard ---------- */
+  :root{ --bar:#4a7ec4 }
+  [data-tema="oscuro"]{ --bar:#5b8fd6 }
+  .dash{padding-bottom:20px}
+  .dcards{display:grid;grid-template-columns:repeat(auto-fit,minmax(190px,1fr));gap:10px;margin-bottom:12px}
+  .dcard{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+         padding:12px 15px;box-shadow:var(--shadow)}
+  .dcard span{display:block;font-size:10.5px;text-transform:uppercase;letter-spacing:.5px;
+              color:var(--muted);font-weight:700}
+  .dcard b{display:block;font-size:25px;font-weight:700;color:var(--ink);letter-spacing:-.6px;
+           line-height:1.25;margin:3px 0 1px}
+  .dcard small{font-size:11.5px;color:var(--muted)}
+  .dcard.big b{font-size:29px;color:var(--red)}
+  .dcard.alerta b{color:var(--warn)}
+  .dgrid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:10px}
+  .dpanel{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);
+          padding:13px 15px 15px;box-shadow:var(--shadow)}
+  .dpanel h3{margin:0 0 12px;font-size:13px;color:var(--ink);font-weight:650}
+  .dpanel h3 span{font-weight:400;color:var(--muted);font-size:11.5px}
+  .graf{width:100%;height:112px;display:block}
+  .ejes{display:flex;margin-top:3px}
+  .ejes span{flex:1;text-align:center;font-size:9.5px;color:var(--muted);text-transform:uppercase}
+  .ejes span.hoy{color:var(--red);font-weight:700}
+  .hbars{display:flex;flex-direction:column;gap:5px}
+  .hb{display:flex;align-items:center;gap:8px;font-size:12px}
+  .hb .hbl{width:120px;flex:none;color:var(--muted);overflow:hidden;text-overflow:ellipsis;
+           white-space:nowrap}
+  .hb .hbt{flex:1;background:var(--surface-3);border-radius:3px;height:11px;overflow:hidden}
+  .hb .hbt i{display:block;height:100%;background:var(--bar);border-radius:3px}
+  .hb b{width:96px;flex:none;text-align:right;color:var(--ink);font-weight:600}
+  .hb.destaca b{color:var(--ok);font-size:13.5px}
+  .torta{width:132px;height:132px;display:block;margin:0 auto}
+  .leyenda{display:flex;justify-content:center;gap:14px;margin-top:9px;font-size:11.5px;
+           color:var(--muted);flex-wrap:wrap}
+  .leyenda i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
+  .leyenda b{color:var(--ink)}
   /* ---------- toast ---------- */
   #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(70px);
          background:var(--ink);color:var(--surface);padding:10px 17px;border-radius:var(--r);
@@ -323,6 +359,7 @@
 <div id="alert" hidden></div>
 
 <div class="tabs">
+  <button class="tab" data-vista="resumen">Resumen</button>
   <button class="tab on" data-vista="pub">Por publicación</button>
   <button class="tab" data-vista="sku">Por SKU</button>
   <button class="tab" data-vista="full">En Full</button>
@@ -507,6 +544,7 @@
   }
 
   function n(v){ v = parseInt(v,10); return isNaN(v) ? 0 : v; }
+  function dec(v){ v = parseFloat(String(v == null ? "" : v).replace(",", ".")); return isNaN(v) ? 0 : v; }
 
   // Suma el stock de las publicaciones activas que tienen tildado "Suma".
   // El resto (inactivas o agrupadas por ML, que comparten la misma mercadería) queda aparte.
@@ -1356,10 +1394,238 @@
     return { nuevas: nuevas, cambiadas: cambiadas, iguales: iguales, saltadas: saltadas };
   }
 
+  /* ================= RESUMEN =================
+     Gráficos en SVG a mano: nada de CDN, y así heredan las variables de color
+     y funcionan igual en claro y en oscuro. */
+
+  var MESNOM = ["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"];
+
+  function ventasConcretadas(){
+    return (state.ventas || []).filter(function(v){ return v.clase === "venta"; });
+  }
+
+  function plataDe(v, campo){ return dec(v[campo]); }
+
+  // Agrupa por mes (YYYY-MM) todo lo que se necesita para el resumen.
+  function porMes(){
+    var m = {};
+    ventasConcretadas().forEach(function(v){
+      if(!v.fecha) return;
+      var k = v.fecha.slice(0, 7);
+      if(!m[k]) m[k] = { mes: k, ventas: 0, unidades: 0, bruto: 0, neto: 0,
+                         comision: 0, envio: 0, impuestos: 0, otros: 0 };
+      m[k].ventas++;
+      m[k].unidades += n(v.unidades);
+      m[k].bruto += plataDe(v, "bruto");
+      m[k].neto += plataDe(v, "neto");
+      m[k].comision += plataDe(v, "comision");
+      m[k].envio += plataDe(v, "envioCosto");
+      m[k].impuestos += plataDe(v, "impuestos");
+      m[k].otros += plataDe(v, "otros");
+    });
+    return Object.keys(m).sort().map(function(k){ return m[k]; });
+  }
+
+  function corto(v){
+    var a = Math.abs(v);
+    if(a >= 1000000) return (v / 1000000).toFixed(a >= 10000000 ? 0 : 1).replace(".", ",") + "M";
+    if(a >= 1000) return Math.round(v / 1000) + "k";
+    return String(Math.round(v));
+  }
+
+  /* ---------- gráficos ---------- */
+  function barras(datos, alto){
+    if(!datos.length) return '<div class="empty">Sin datos</div>';
+    var max = Math.max.apply(null, datos.map(function(d){ return Math.abs(d.valor); })) || 1;
+    var an = 100 / datos.length;
+    return '<svg class="graf" viewBox="0 0 100 ' + alto + '" preserveAspectRatio="none" role="img">' +
+      datos.map(function(d, i){
+        var h = Math.abs(d.valor) / max * (alto - 14);
+        return '<rect x="' + (i * an + an * 0.18).toFixed(2) + '" y="' + (alto - 12 - h).toFixed(2) +
+          '" width="' + (an * 0.64).toFixed(2) + '" height="' + Math.max(h, 0.4).toFixed(2) +
+          '" rx="0.6" fill="' + (d.destacar ? "var(--red)" : "var(--bar)") + '">' +
+          "<title>" + esc(d.titulo) + "</title></rect>";
+      }).join("") + "</svg>" +
+      '<div class="ejes">' + datos.map(function(d){
+        return "<span" + (d.destacar ? ' class="hoy"' : "") + ">" + esc(d.eje) + "</span>";
+      }).join("") + "</div>";
+  }
+
+  function barrasH(datos){
+    if(!datos.length) return '<div class="empty">Sin datos</div>';
+    var max = Math.max.apply(null, datos.map(function(d){ return d.valor; })) || 1;
+    return '<div class="hbars">' + datos.map(function(d){
+      return '<div class="hb" title="' + esc(d.titulo) + '">' +
+        '<span class="hbl">' + esc(d.eje) + "</span>" +
+        '<span class="hbt"><i style="width:' + (d.valor / max * 100).toFixed(1) + '%"></i></span>' +
+        '<b>' + esc(d.txt) + "</b></div>";
+    }).join("") + "</div>";
+  }
+
+  function torta(datos){
+    var tot = datos.reduce(function(s, d){ return s + d.valor; }, 0);
+    if(!tot) return '<div class="empty">Sin datos</div>';
+    var ang = -Math.PI / 2, r = 15.5, cx = 18, cy = 18;
+    var partes = datos.map(function(d){
+      var frac = d.valor / tot, fin = ang + frac * Math.PI * 2;
+      var x1 = cx + r * Math.cos(ang), y1 = cy + r * Math.sin(ang);
+      var x2 = cx + r * Math.cos(fin), y2 = cy + r * Math.sin(fin);
+      var grande = frac > 0.5 ? 1 : 0;
+      ang = fin;
+      // una sola porción no dibuja arco: se usa un círculo entero
+      var d2 = frac >= 0.999
+        ? "M " + cx + " " + (cy - r) + " A " + r + " " + r + " 0 1 1 " + (cx - 0.01) + " " + (cy - r) + " Z"
+        : "M " + cx + " " + cy + " L " + x1.toFixed(2) + " " + y1.toFixed(2) +
+          " A " + r + " " + r + " 0 " + grande + " 1 " + x2.toFixed(2) + " " + y2.toFixed(2) + " Z";
+      return '<path d="' + d2 + '" fill="' + d.color + '"><title>' + esc(d.titulo) + "</title></path>";
+    }).join("");
+    return '<svg class="torta" viewBox="0 0 36 36" role="img">' + partes + "</svg>" +
+      '<div class="leyenda">' + datos.map(function(d){
+        return '<span><i style="background:' + d.color + '"></i>' + esc(d.eje) +
+          " <b>" + Math.round(d.valor / tot * 100) + "%</b></span>";
+      }).join("") + "</div>";
+  }
+
+  /* ---------- vista ---------- */
+  function renderResumen(){
+    var meses = porMes();
+    var hoy = new Date().toISOString().slice(0, 7);
+    var esteMes = meses.filter(function(m){ return m.mes === hoy; })[0] ||
+                  { mes: hoy, ventas: 0, unidades: 0, bruto: 0, neto: 0, comision: 0,
+                    envio: 0, impuestos: 0, otros: 0 };
+    var todo = meses.reduce(function(a, m){
+      ["ventas","unidades","bruto","neto","comision","envio","impuestos","otros"]
+        .forEach(function(k){ a[k] += m[k]; });
+      return a;
+    }, { ventas: 0, unidades: 0, bruto: 0, neto: 0, comision: 0, envio: 0, impuestos: 0, otros: 0 });
+
+    var conPlata = ventasConcretadas().filter(function(v){ return dec(v.bruto); }).length;
+    var sinPlata = ventasConcretadas().length - conPlata;
+
+    // más vendidos por unidades
+    var porSku = {};
+    ventasConcretadas().forEach(function(v){
+      if(!porSku[v.sku]) porSku[v.sku] = { u: 0, plata: 0, title: v.title };
+      porSku[v.sku].u += n(v.unidades);
+      porSku[v.sku].plata += plataDe(v, "bruto");
+    });
+    var top = Object.keys(porSku).map(function(k){
+      return { sku: k, u: porSku[k].u, plata: porSku[k].plata, title: porSku[k].title };
+    }).sort(function(a, b){ return b.u - a.u; }).slice(0, 10);
+
+    // sin stock: publicaciones activas que no tienen nada para vender
+    var activas = state.rows.filter(function(r){ return r.estado === "Activa"; });
+    var sinStock = activas.filter(function(r){ return !n(r.stock) && !n(r.full); });
+    // ML pausa lo que llega a cero, así que "0 sin stock" no dice nada: lo accionable
+    // son las que están por agotarse
+    var alFilo = activas.filter(function(r){ return n(r.stock) + n(r.full) <= 1; });
+    var skusSinStock = {};
+    alFilo.forEach(function(r){ skusSinStock[r.sku] = true; });
+    var vendidosSinStock = top.filter(function(t){ return skusSinStock[t.sku]; }).length;
+
+    var full = ventasConcretadas().filter(function(v){ return v.envio === "Full"; });
+    var mesesGraf = meses.slice(-14).map(function(m){
+      var p = m.mes.split("-");
+      return { eje: MESNOM[+p[1] - 1], valor: m.bruto || m.unidades,
+               destacar: m.mes === hoy,
+               titulo: MESNOM[+p[1] - 1] + " " + p[0] + ": " + m.ventas + " ventas · " +
+                       m.unidades + " unidades · " + plata(Math.round(m.bruto)) };
+    });
+
+    var h = '<div class="dash">';
+
+    // fila de números grandes
+    h += '<div class="dcards">' +
+      tarjeta("Este mes · " + MESNOM[+hoy.split("-")[1] - 1], plata(Math.round(esteMes.bruto)),
+              esteMes.ventas + " ventas · " + esteMes.unidades + " unidades", "big") +
+      tarjeta("Te queda este mes", plata(Math.round(esteMes.neto)),
+              esteMes.bruto ? Math.round(esteMes.neto / esteMes.bruto * 100) + "% de lo facturado" : "—") +
+      tarjeta("Vendido en total", plata(Math.round(todo.bruto)),
+              todo.ventas + " ventas · " + todo.unidades + " unidades") +
+      tarjeta("Sin stock o por agotarse", String(alFilo.length),
+              sinStock.length + " en cero · " + (alFilo.length - sinStock.length) + " con una unidad" +
+              (vendidosSinStock ? " · " + vendidosSinStock + " del top 10" : ""),
+              alFilo.length ? "alerta" : "") +
+      "</div>";
+
+    // ventas por mes
+    h += '<div class="dgrid">';
+    h += panel("Ventas por mes", (meses.length ? "facturado, últimos " + mesesGraf.length + " meses" : ""),
+      barras(mesesGraf, 62));
+
+    // desglose de la plata
+    var gasto = Math.abs(todo.comision) + Math.abs(todo.envio) + Math.abs(todo.impuestos);
+    h += panel("De lo facturado, qué queda", conPlata ? "sobre el total del período" : "",
+      conPlata ? cascada(todo) : '<div class="empty">Las ventas cargadas no tienen importes.<br>' +
+        "Volvé a importar el reporte de ventas para traerlos.</div>");
+
+    // torta de envíos
+    h += panel("Cómo se despacha", full.length + " por Full",
+      torta([
+        { eje: "Mercado Envíos", valor: ventasConcretadas().length - full.length, color: "var(--bar)",
+          titulo: (ventasConcretadas().length - full.length) + " ventas por Mercado Envíos" },
+        { eje: "Full", valor: full.length, color: "var(--red)", titulo: full.length + " ventas por Full" }
+      ]));
+
+    // más vendidos
+    h += panel("Más vendidos", "por unidades", barrasH(top.map(function(t){
+      return { eje: t.sku, valor: t.u, txt: String(t.u),
+               titulo: t.sku + " · " + t.u + " unidades · " + plata(Math.round(t.plata)) +
+                       (skusSinStock[t.sku] ? " · HOY SIN STOCK" : "") };
+    })));
+    h += "</div>";
+
+    if(sinPlata) h += '<p class="hint" style="padding:10px 0">' + sinPlata +
+      " ventas no tienen importes cargados: se cuentan en unidades pero no en plata.</p>";
+    h += "</div>";
+
+    document.getElementById("app").innerHTML = h;
+    document.getElementById("shown").textContent =
+      meses.length ? meses.length + " meses con ventas · desde " + fechaLinda((meses[0].mes) + "-01") : "";
+    kpis();
+  }
+
+  function tarjeta(tit, valor, pie, clase){
+    return '<div class="dcard ' + (clase || "") + '"><span>' + esc(tit) + "</span><b>" +
+      esc(valor) + "</b><small>" + esc(pie) + "</small></div>";
+  }
+
+  function panel(tit, sub, cuerpo){
+    return '<section class="dpanel"><h3>' + esc(tit) +
+      (sub ? " <span>" + esc(sub) + "</span>" : "") + "</h3>" + cuerpo + "</section>";
+  }
+
+  // De lo facturado hasta lo que queda, mostrando cada descuento en proporción.
+  function cascada(t){
+    var bruto = t.bruto || 1;
+    // el Total que informa ML no siempre reproduce exacto la suma de sus componentes;
+    // la diferencia va como fila propia para que la columna cierre en vez de "casi"
+    var resto = t.neto - (t.bruto + t.comision + t.envio + t.impuestos + t.otros);
+    var filas = [
+      { k: "Facturado", v: t.bruto, color: "var(--bar)" },
+      { k: "Comisión de ML", v: -Math.abs(t.comision), color: "var(--red)" },
+      { k: "Envíos", v: -Math.abs(t.envio), color: "#e0a94a" },
+      { k: "Impuestos", v: -Math.abs(t.impuestos), color: "#a06bd4" },
+      { k: "Descuentos y reembolsos", v: t.otros, color: "var(--muted)" }
+    ];
+    if(Math.abs(resto) > 1) filas.push({ k: "Otros ajustes de ML", v: resto, color: "var(--muted)" });
+    filas.push({ k: "Te queda", v: t.neto, color: "var(--ok)" });
+    return '<div class="hbars">' + filas.map(function(f, i){
+      var pct = Math.abs(f.v) / bruto * 100;
+      var ultimo = i === filas.length - 1;
+      return '<div class="hb' + (ultimo ? " destaca" : "") + '">' +
+        '<span class="hbl">' + esc(f.k) + "</span>" +
+        '<span class="hbt"><i style="width:' + Math.min(100, pct).toFixed(1) +
+          "%;background:" + f.color + '"></i></span>' +
+        "<b>" + plata(Math.round(f.v)) + "</b></div>";
+    }).join("") + "</div>";
+  }
+
   function render(){
     if(vista === "sku"){ asegurarSku(); renderSku(); return; }
     if(vista === "full"){ renderFull(); return; }
     if(vista === "ventas"){ renderVentas(); return; }
+    if(vista === "resumen"){ renderResumen(); return; }
     var gs = filtered();
     var head = '<table><thead><tr>' +
       "<th>SKU / Publicación</th><th>Título</th><th>Estado</th>" +
@@ -2123,7 +2389,17 @@
       { k: "title",  t: "Título",     alias: ["TITULO DE LA PUBLICACION","TITULO","TITLE"] },
       { k: "unid",   t: "Unidades",   alias: ["UNIDADES"] },
       { k: "envio",  t: "Envío",      alias: ["FORMA DE ENTREGA"] },
-      { k: "estado", t: "Estado",     alias: ["ESTADO"], evitar: ["DESCRIPCION"] }
+      { k: "estado", t: "Estado",     alias: ["ESTADO"], evitar: ["DESCRIPCION"] },
+      { k: "bruto",  t: "Ingresos",   alias: ["INGRESOS POR PRODUCTOS (ARS)","INGRESOS POR PRODUCTOS"] },
+      { k: "cargo",  t: "Cargo por venta", alias: ["CARGO POR VENTA"] },
+      { k: "fijo",   t: "Costo fijo", alias: ["COSTO FIJO"] },
+      { k: "cuotas", t: "Costo cuotas", alias: ["COSTO POR OFRECER CUOTAS"] },
+      { k: "envIn",  t: "Ingresos envío", alias: ["INGRESOS POR ENVIO (ARS)","INGRESOS POR ENVIO"] },
+      { k: "envOut", t: "Costos de envío", alias: ["COSTOS DE ENVIO (ARS)","COSTOS DE ENVIO"] },
+      { k: "imp",    t: "Impuestos",  alias: ["IMPUESTOS"] },
+      { k: "desc",   t: "Descuentos", alias: ["DESCUENTOS Y BONIFICACIONES"] },
+      { k: "reemb",  t: "Reembolsos", alias: ["ANULACIONES Y REEMBOLSOS (ARS)","ANULACIONES Y REEMBOLSOS"] },
+      { k: "neto",   t: "Total",      alias: ["TOTAL (ARS)"] }
     ],
     sku: [
       { k: "sku",   t: "SKU",   alias: ["CODIGO","SKU"], clave: true },
@@ -2359,12 +2635,26 @@
       if(!sku && !mla) motivo = "encabezado de paquete";
       var ya = porNum[num];
       var clase = claseVenta(estado);
+      var col = function(k){ return m[k] >= 0 ? dec(r[m[k]]) : 0; };
+      // se agrupa en cuatro conceptos: lo que entra, lo que cobra ML, el envío y los
+      // impuestos. La suma de los cuatro reproduce el Total que informa el reporte.
+      var plata = {
+        bruto: col("bruto"),
+        comision: col("cargo") + col("fijo") + col("cuotas"),
+        envio: col("envIn") + col("envOut"),
+        impuestos: col("imp"),
+        otros: col("desc") + col("reemb"),
+        neto: col("neto")
+      };
       imp.filas.push({
         i: i, num: num, sku: sku, mla: mla, title: val("title"),
         fecha: fechaVenta(val("fecha")), unidades: n(r[m.unid]) || 1,
         envio: envioVenta(val("envio")), estado: estado, clase: clase,
+        plata: plata,
         existe: !!ya,
-        cambia: !!ya && (ya.clase !== clase || n(ya.unidades) !== (n(r[m.unid]) || 1)),
+        // una venta ya cargada sin importes también se actualiza: son los que faltaban
+        cambia: !!ya && (ya.clase !== clase || n(ya.unidades) !== (n(r[m.unid]) || 1) ||
+                (ya.bruto === undefined && plata.bruto !== 0)),
         motivo: motivo
       });
     }
@@ -2419,11 +2709,16 @@
         state.ventas.push({
           id: ventaId(), fecha: f.fecha, num: f.num, sku: f.sku, mla: f.mla, title: f.title,
           unidades: f.unidades, envio: f.envio, estado: f.estado, clase: f.clase,
+          bruto: f.plata.bruto, comision: f.plata.comision, envioCosto: f.plata.envio,
+          impuestos: f.plata.impuestos, otros: f.plata.otros, neto: f.plata.neto,
           descuenta: descontar, aplicado: 0
         });
         nuevas++;
       } else {
         ya.clase = f.clase; ya.estado = f.estado; ya.unidades = f.unidades;
+        ya.bruto = f.plata.bruto; ya.comision = f.plata.comision;
+        ya.envioCosto = f.plata.envio; ya.impuestos = f.plata.impuestos;
+        ya.otros = f.plata.otros; ya.neto = f.plata.neto;
         cambiadas++;
       }
     });
@@ -2584,8 +2879,11 @@
         .forEach(function(x){ x.classList.toggle("oculto", vista !== "sku"); });
       document.querySelectorAll(".solo-ventas")
         .forEach(function(x){ x.classList.toggle("oculto", vista !== "ventas"); });
-      document.getElementById("btnAddSku").classList.toggle("oculto", vista === "ventas");
-      document.getElementById("btnAddSku2").classList.toggle("oculto", vista === "ventas");
+      // el resumen no se filtra: es la foto completa
+      document.getElementById("q").classList.toggle("oculto", vista === "resumen");
+      document.getElementById("btnXlsx").classList.toggle("oculto", vista === "resumen");
+      document.getElementById("btnAddSku").classList.toggle("oculto", vista === "ventas" || vista === "resumen");
+      document.getElementById("btnAddSku2").classList.toggle("oculto", vista === "ventas" || vista === "resumen");
       var txt = vista === "sku" ? "+ Agregar SKU" : "+ Agregar publicación";
       document.getElementById("btnAddSku").textContent = txt;
       document.getElementById("btnAddSku2").textContent = txt;
