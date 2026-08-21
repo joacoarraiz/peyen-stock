@@ -58,6 +58,17 @@ publicaciones a tocar y nada más, e incluye las columnas *Que cambio* y *Link*.
 
 **Marcar actualizadas** borra las marcas cuando el trabajo ya está hecho en Mercado Libre.
 
+### Reimportar ventas no descuenta dos veces
+
+Cada venta recuerda dos cosas: si **afecta el stock** (`descuenta`) y **cuánto descontó ya**
+(`aplicado`). Al pisar una venta ya cargada esos dos campos no se tocan, así que una del histórico
+sigue sin afectar stock por más que se reimporte con la casilla tildada, y una que ya descontó
+solo ajusta la diferencia si cambió de estado o de unidades.
+
+Verificado: con 783 ventas de histórico y 8.335 unidades, reimportar el mismo archivo **con la
+casilla de descontar tildada** deja el stock en 8.335. Una venta nueva de 4 unidades en la misma
+corrida sí lo baja a 8.331.
+
 ### Encontrar qué SKU cambió
 
 Lo mismo pero a nivel SKU, en su propia vista. Marca **solo los que cambiaron de valor**, no los que fueron
@@ -157,6 +168,11 @@ con el grupo cerrado, la misma columna resume cuántas suman (`1 de 2`, `todas`)
 vuelve solo, porque ya no es la situación que se revisó.
 
 ## Resumen
+
+**Filtro de período con comparación**: este mes, mes anterior, últimos 3 o 6 meses, este año,
+todo, o un rango a elegir. Cada número se compara contra el período anterior del mismo largo,
+como hace el panel de Mercado Libre. En los costos la flecha se lee al revés a propósito: crecen
+aunque el número baje, así que se comparan en valor absoluto y **subir es rojo**.
 
 Ventas del mes en curso, facturado del período, y **qué queda de lo facturado**: el desglose va
 de lo facturado a lo cobrado restando comisión de ML, envíos e impuestos. Sobre enero-agosto de

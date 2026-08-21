@@ -263,6 +263,14 @@
            color:var(--muted);flex-wrap:wrap}
   .leyenda i{display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px}
   .leyenda b{color:var(--ink)}
+  .dcard b em{font-size:12px;font-weight:700;font-style:normal;margin-left:8px;vertical-align:middle}
+  .hb b em{font-size:10.5px;font-weight:700;font-style:normal;margin-left:6px}
+  em.sube{color:var(--ok)}
+  em.baja{color:var(--red)}
+  [data-tema="oscuro"] em.baja{color:#ff7a70}
+  em.igual{color:var(--muted)}
+  .cmp{text-align:center;font-size:11.5px;color:var(--muted);margin:8px 0 0}
+  .hb b{width:150px}
   /* ---------- toast ---------- */
   #toast{position:fixed;left:50%;bottom:22px;transform:translateX(-50%) translateY(70px);
          background:var(--ink);color:var(--surface);padding:10px 17px;border-radius:var(--r);
@@ -337,6 +345,17 @@
   </select>
   <button class="btn btn-line solo-sku oculto" id="btnVisto">Marcar revisados</button>
   <button class="btn btn-line" id="btnToggle">Contraer todo</button>
+  <select id="rPeriodo" class="solo-resumen oculto">
+    <option value="mes">Este mes</option>
+    <option value="mesAnterior">Mes anterior</option>
+    <option value="3m">Últimos 3 meses</option>
+    <option value="6m">Últimos 6 meses</option>
+    <option value="anio">Este año</option>
+    <option value="todo">Todo el historial</option>
+    <option value="custom">Período a elegir…</option>
+  </select>
+  <label class="chk solo-resumen oculto" id="rRango">Desde <input type="date" id="rDesde">
+    hasta <input type="date" id="rHasta"></label>
   <select id="vClase" class="solo-ventas oculto">
     <option value="">Ventas y devoluciones</option>
     <option value="venta">Solo ventas</option>
@@ -1486,92 +1505,170 @@
       }).join("") + "</div>";
   }
 
+  /* ---------- períodos y comparación ---------- */
+  function hoyISO(){ return new Date().toISOString().slice(0, 10); }
+
+  function sumaDias(iso, d){
+    var p = iso.split("-");
+    var f = new Date(Date.UTC(+p[0], +p[1] - 1, +p[2]));
+    f.setUTCDate(f.getUTCDate() + d);
+    return f.toISOString().slice(0, 10);
+  }
+
+  function diasEntre(a, b){
+    return Math.round((Date.parse(b) - Date.parse(a)) / 86400000) + 1;
+  }
+
+  function primeroDeMes(iso, correr){
+    var p = iso.split("-");
+    var m = +p[1] - 1 + (correr || 0), a = +p[0];
+    while(m < 0){ m += 12; a--; }
+    while(m > 11){ m -= 12; a++; }
+    return a + "-" + String(m + 1).padStart(2, "0") + "-01";
+  }
+
+  function ultimoDeMes(iso){
+    return sumaDias(primeroDeMes(iso, 1), -1);
+  }
+
+  // Devuelve el rango elegido y el rango anterior del mismo largo, para comparar.
+  function rango(){
+    var sel = document.getElementById("rPeriodo").value, hoy = hoyISO(), desde, hasta;
+    if(sel === "mes"){ desde = primeroDeMes(hoy); hasta = hoy; }
+    else if(sel === "mesAnterior"){ desde = primeroDeMes(hoy, -1); hasta = ultimoDeMes(desde); }
+    else if(sel === "3m"){ desde = primeroDeMes(hoy, -2); hasta = hoy; }
+    else if(sel === "6m"){ desde = primeroDeMes(hoy, -5); hasta = hoy; }
+    else if(sel === "anio"){ desde = hoy.slice(0, 4) + "-01-01"; hasta = hoy; }
+    else if(sel === "custom"){
+      desde = document.getElementById("rDesde").value || "2000-01-01";
+      hasta = document.getElementById("rHasta").value || hoy;
+      if(desde > hasta){ var t = desde; desde = hasta; hasta = t; }
+    } else {
+      var f = ventasConcretadas().map(function(v){ return v.fecha; }).filter(Boolean).sort();
+      desde = f[0] || hoy; hasta = f[f.length - 1] || hoy;
+    }
+    var largo = diasEntre(desde, hasta);
+    return { desde: desde, hasta: hasta, sel: sel,
+             pDesde: sumaDias(desde, -largo), pHasta: sumaDias(desde, -1), largo: largo };
+  }
+
+  function nombreRango(r){
+    if(r.sel === "mes") return "este mes";
+    if(r.sel === "mesAnterior") return "mes anterior";
+    if(r.sel === "todo") return "todo el historial";
+    return fechaLinda(r.desde) + " al " + fechaLinda(r.hasta);
+  }
+
+  function sumar(desde, hasta){
+    var t = { ventas: 0, unidades: 0, bruto: 0, neto: 0, comision: 0, envio: 0,
+              impuestos: 0, otros: 0, full: 0, me: 0 };
+    ventasConcretadas().forEach(function(v){
+      if(!v.fecha || v.fecha < desde || v.fecha > hasta) return;
+      t.ventas++;
+      t.unidades += n(v.unidades);
+      t.bruto += plataDe(v, "bruto");
+      t.neto += plataDe(v, "neto");
+      t.comision += plataDe(v, "comision");
+      t.envio += plataDe(v, "envioCosto");
+      t.impuestos += plataDe(v, "impuestos");
+      t.otros += plataDe(v, "otros");
+      if(v.envio === "Full") t.full++; else t.me++;
+    });
+    return t;
+  }
+
+  // Variación contra el período anterior. Sin base no hay porcentaje que valga.
+  /* Variación contra el período anterior. En un costo la lectura se invierte: crece
+     el gasto aunque el número baje, así que se compara en valor absoluto y subir
+     es malo. Sin base no hay porcentaje que valga. */
+  function delta(ahora, antes, esCosto){
+    if(esCosto){ ahora = Math.abs(ahora); antes = Math.abs(antes); }
+    if(!antes) return ahora ? '<em class="igual">sin base</em>' : "";
+    var p = (ahora - antes) / Math.abs(antes) * 100;
+    if(Math.abs(p) < 0.5) return '<em class="igual">igual</em>';
+    var bien = esCosto ? p < 0 : p > 0;
+    return '<em class="' + (bien ? "sube" : "baja") + '">' + (p > 0 ? "▲" : "▼") + " " +
+      Math.abs(p).toFixed(Math.abs(p) >= 100 ? 0 : 1).replace(".", ",") + "%</em>";
+  }
+
   /* ---------- vista ---------- */
   function renderResumen(){
+    var r = rango();
+    document.getElementById("rRango").classList.toggle("oculto", r.sel !== "custom");
+    if(r.sel !== "custom"){
+      document.getElementById("rDesde").value = r.desde;
+      document.getElementById("rHasta").value = r.hasta;
+    }
+    var t = sumar(r.desde, r.hasta);
+    // "todo" no tiene período anterior contra el cual comparar
+    var prev = r.sel === "todo" ? null : sumar(r.pDesde, r.pHasta);
     var meses = porMes();
-    var hoy = new Date().toISOString().slice(0, 7);
-    var esteMes = meses.filter(function(m){ return m.mes === hoy; })[0] ||
-                  { mes: hoy, ventas: 0, unidades: 0, bruto: 0, neto: 0, comision: 0,
-                    envio: 0, impuestos: 0, otros: 0 };
-    var todo = meses.reduce(function(a, m){
-      ["ventas","unidades","bruto","neto","comision","envio","impuestos","otros"]
-        .forEach(function(k){ a[k] += m[k]; });
-      return a;
-    }, { ventas: 0, unidades: 0, bruto: 0, neto: 0, comision: 0, envio: 0, impuestos: 0, otros: 0 });
+    var hoy = hoyISO().slice(0, 7);
+    var nom = nombreRango(r);
+    var comp = r.sel === "todo" ? "" : "contra " + fechaLinda(r.pDesde) + " al " + fechaLinda(r.pHasta);
 
     var conPlata = ventasConcretadas().filter(function(v){ return dec(v.bruto); }).length;
     var sinPlata = ventasConcretadas().length - conPlata;
 
-    // más vendidos por unidades
+    // más vendidos del período
     var porSku = {};
     ventasConcretadas().forEach(function(v){
-      if(!porSku[v.sku]) porSku[v.sku] = { u: 0, plata: 0, title: v.title };
+      if(!v.fecha || v.fecha < r.desde || v.fecha > r.hasta) return;
+      if(!porSku[v.sku]) porSku[v.sku] = { u: 0, plata: 0 };
       porSku[v.sku].u += n(v.unidades);
       porSku[v.sku].plata += plataDe(v, "bruto");
     });
     var top = Object.keys(porSku).map(function(k){
-      return { sku: k, u: porSku[k].u, plata: porSku[k].plata, title: porSku[k].title };
+      return { sku: k, u: porSku[k].u, plata: porSku[k].plata };
     }).sort(function(a, b){ return b.u - a.u; }).slice(0, 10);
 
-    // sin stock: publicaciones activas que no tienen nada para vender
-    var activas = state.rows.filter(function(r){ return r.estado === "Activa"; });
-    var sinStock = activas.filter(function(r){ return !n(r.stock) && !n(r.full); });
-    // ML pausa lo que llega a cero, así que "0 sin stock" no dice nada: lo accionable
-    // son las que están por agotarse
-    var alFilo = activas.filter(function(r){ return n(r.stock) + n(r.full) <= 1; });
-    var skusSinStock = {};
-    alFilo.forEach(function(r){ skusSinStock[r.sku] = true; });
-    var vendidosSinStock = top.filter(function(t){ return skusSinStock[t.sku]; }).length;
+    var activas = state.rows.filter(function(x){ return x.estado === "Activa"; });
+    var sinStock = activas.filter(function(x){ return !n(x.stock) && !n(x.full); });
+    var alFilo = activas.filter(function(x){ return n(x.stock) + n(x.full) <= 1; });
+    var skusFilo = {};
+    alFilo.forEach(function(x){ skusFilo[x.sku] = true; });
+    var vendidosFilo = top.filter(function(x){ return skusFilo[x.sku]; }).length;
 
-    var full = ventasConcretadas().filter(function(v){ return v.envio === "Full"; });
     var mesesGraf = meses.slice(-14).map(function(m){
       var p = m.mes.split("-");
       return { eje: MESNOM[+p[1] - 1], valor: m.bruto || m.unidades,
-               destacar: m.mes === hoy,
+               destacar: m.mes >= r.desde.slice(0, 7) && m.mes <= r.hasta.slice(0, 7),
                titulo: MESNOM[+p[1] - 1] + " " + p[0] + ": " + m.ventas + " ventas · " +
                        m.unidades + " unidades · " + plata(Math.round(m.bruto)) };
     });
 
     var h = '<div class="dash">';
-
-    // fila de números grandes
     h += '<div class="dcards">' +
-      tarjeta("Este mes · " + MESNOM[+hoy.split("-")[1] - 1], plata(Math.round(esteMes.bruto)),
-              esteMes.ventas + " ventas · " + esteMes.unidades + " unidades", "big") +
-      tarjeta("Te queda este mes", plata(Math.round(esteMes.neto)),
-              esteMes.bruto ? Math.round(esteMes.neto / esteMes.bruto * 100) + "% de lo facturado" : "—") +
-      tarjeta("Vendido en total", plata(Math.round(todo.bruto)),
-              todo.ventas + " ventas · " + todo.unidades + " unidades") +
+      tarjeta("Facturado · " + nom, plata(Math.round(t.bruto)),
+              t.ventas + " ventas · " + t.unidades + " unidades", "big", prev ? delta(t.bruto, prev.bruto) : "") +
+      tarjeta("Te queda", plata(Math.round(t.neto)),
+              t.bruto ? Math.round(t.neto / t.bruto * 100) + "% de lo facturado" : "—",
+              "", prev ? delta(t.neto, prev.neto) : "") +
+      tarjeta("Unidades vendidas", String(t.unidades),
+              prev && prev.unidades ? "antes " + prev.unidades : "sin período anterior",
+              "", prev ? delta(t.unidades, prev.unidades) : "") +
       tarjeta("Sin stock o por agotarse", String(alFilo.length),
               sinStock.length + " en cero · " + (alFilo.length - sinStock.length) + " con una unidad" +
-              (vendidosSinStock ? " · " + vendidosSinStock + " del top 10" : ""),
+              (vendidosFilo ? " · " + vendidosFilo + " del top 10" : ""),
               alFilo.length ? "alerta" : "") +
       "</div>";
 
-    // ventas por mes
     h += '<div class="dgrid">';
-    h += panel("Ventas por mes", (meses.length ? "facturado, últimos " + mesesGraf.length + " meses" : ""),
-      barras(mesesGraf, 62));
-
-    // desglose de la plata
-    var gasto = Math.abs(todo.comision) + Math.abs(todo.envio) + Math.abs(todo.impuestos);
-    h += panel("De lo facturado, qué queda", conPlata ? "sobre el total del período" : "",
-      conPlata ? cascada(todo) : '<div class="empty">Las ventas cargadas no tienen importes.<br>' +
-        "Volvé a importar el reporte de ventas para traerlos.</div>");
-
-    // torta de envíos
-    h += panel("Cómo se despacha", full.length + " por Full",
-      torta([
-        { eje: "Mercado Envíos", valor: ventasConcretadas().length - full.length, color: "var(--bar)",
-          titulo: (ventasConcretadas().length - full.length) + " ventas por Mercado Envíos" },
-        { eje: "Full", valor: full.length, color: "var(--red)", titulo: full.length + " ventas por Full" }
-      ]));
-
-    // más vendidos
-    h += panel("Más vendidos", "por unidades", barrasH(top.map(function(t){
-      return { eje: t.sku, valor: t.u, txt: String(t.u),
-               titulo: t.sku + " · " + t.u + " unidades · " + plata(Math.round(t.plata)) +
-                       (skusSinStock[t.sku] ? " · HOY SIN STOCK" : "") };
+    h += panel("Ventas por mes", "facturado · el período elegido va en rojo", barras(mesesGraf, 62));
+    h += panel("De lo facturado, qué queda", nom + (comp ? " · " + comp : ""),
+      t.bruto ? cascada(t, prev || {}) : '<div class="empty">Sin ventas con importes en este período.</div>');
+    h += panel("Cómo se despacha", nom,
+      (t.full + t.me) ? torta([
+        { eje: "Mercado Envíos", valor: t.me, color: "var(--bar)",
+          titulo: t.me + " ventas por Mercado Envíos" },
+        { eje: "Full", valor: t.full, color: "var(--red)", titulo: t.full + " ventas por Full" }
+      ]) + (prev && prev.full + prev.me ? '<p class="cmp">Antes: ' +
+        Math.round(prev.full / (prev.full + prev.me) * 100) + "% por Full</p>" : "")
+       : '<div class="empty">Sin ventas en este período.</div>');
+    h += panel("Más vendidos", nom + " · por unidades", barrasH(top.map(function(x){
+      return { eje: x.sku, valor: x.u, txt: String(x.u),
+               titulo: x.sku + " · " + x.u + " unidades · " + plata(Math.round(x.plata)) +
+                       (skusFilo[x.sku] ? " · HOY SIN STOCK" : "") };
     })));
     h += "</div>";
 
@@ -1580,14 +1677,16 @@
     h += "</div>";
 
     document.getElementById("app").innerHTML = h;
+    var fechas = fechaLinda(r.desde) + " al " + fechaLinda(r.hasta);
     document.getElementById("shown").textContent =
-      meses.length ? meses.length + " meses con ventas · desde " + fechaLinda((meses[0].mes) + "-01") : "";
+      (nom === fechas ? fechas : nom + " · " + fechas) +
+      (r.sel === "todo" ? "" : " · comparado con los " + r.largo + " días anteriores");
     kpis();
   }
 
-  function tarjeta(tit, valor, pie, clase){
+  function tarjeta(tit, valor, pie, clase, dif){
     return '<div class="dcard ' + (clase || "") + '"><span>' + esc(tit) + "</span><b>" +
-      esc(valor) + "</b><small>" + esc(pie) + "</small></div>";
+      esc(valor) + (dif || "") + "</b><small>" + esc(pie) + "</small></div>";
   }
 
   function panel(tit, sub, cuerpo){
@@ -1595,29 +1694,27 @@
       (sub ? " <span>" + esc(sub) + "</span>" : "") + "</h3>" + cuerpo + "</section>";
   }
 
-  // De lo facturado hasta lo que queda, mostrando cada descuento en proporción.
-  function cascada(t){
+  // De lo facturado hasta lo que queda, con el período anterior al lado de cada fila.
+  function cascada(t, prev){
     var bruto = t.bruto || 1;
-    // el Total que informa ML no siempre reproduce exacto la suma de sus componentes;
-    // la diferencia va como fila propia para que la columna cierre en vez de "casi"
     var resto = t.neto - (t.bruto + t.comision + t.envio + t.impuestos + t.otros);
     var filas = [
-      { k: "Facturado", v: t.bruto, color: "var(--bar)" },
-      { k: "Comisión de ML", v: -Math.abs(t.comision), color: "var(--red)" },
-      { k: "Envíos", v: -Math.abs(t.envio), color: "#e0a94a" },
-      { k: "Impuestos", v: -Math.abs(t.impuestos), color: "#a06bd4" },
-      { k: "Descuentos y reembolsos", v: t.otros, color: "var(--muted)" }
+      { k: "Facturado", v: t.bruto, p: prev.bruto, color: "var(--bar)" },
+      { k: "Comisión de ML", v: -Math.abs(t.comision), p: prev.comision, color: "var(--red)", costo: true },
+      { k: "Envíos", v: -Math.abs(t.envio), p: prev.envio, color: "#e0a94a", costo: true },
+      { k: "Impuestos", v: -Math.abs(t.impuestos), p: prev.impuestos, color: "#a06bd4", costo: true },
+      { k: "Descuentos y reembolsos", v: t.otros, p: prev.otros, color: "var(--muted)" }
     ];
-    if(Math.abs(resto) > 1) filas.push({ k: "Otros ajustes de ML", v: resto, color: "var(--muted)" });
-    filas.push({ k: "Te queda", v: t.neto, color: "var(--ok)" });
+    if(Math.abs(resto) > 1) filas.push({ k: "Otros ajustes de ML", v: resto, color: "var(--muted)", sinComp: true });
+    filas.push({ k: "Te queda", v: t.neto, p: prev.neto, color: "var(--ok)" });
     return '<div class="hbars">' + filas.map(function(f, i){
-      var pct = Math.abs(f.v) / bruto * 100;
       var ultimo = i === filas.length - 1;
       return '<div class="hb' + (ultimo ? " destaca" : "") + '">' +
         '<span class="hbl">' + esc(f.k) + "</span>" +
-        '<span class="hbt"><i style="width:' + Math.min(100, pct).toFixed(1) +
+        '<span class="hbt"><i style="width:' + Math.min(100, Math.abs(f.v) / bruto * 100).toFixed(1) +
           "%;background:" + f.color + '"></i></span>' +
-        "<b>" + plata(Math.round(f.v)) + "</b></div>";
+        "<b>" + plata(Math.round(f.v)) +
+          (prev && prev.bruto && !f.sinComp ? delta(f.v, f.p, f.costo) : "") + "</b></div>";
     }).join("") + "</div>";
   }
 
@@ -2895,7 +2992,7 @@
   }
 
   /* ---------- eventos ---------- */
-  ["q","fEstado","fZero","fMulti","fRev","fPend","fCambio","ordenSku","vClase","vEnvio","vDesde","vHasta"].forEach(function(id){
+  ["q","fEstado","fZero","fMulti","fRev","fPend","fCambio","ordenSku","vClase","vEnvio","vDesde","vHasta","rPeriodo","rDesde","rHasta"].forEach(function(id){
     document.getElementById(id).addEventListener("input", render);
   });
   document.querySelectorAll(".tab").forEach(function(b){
@@ -2909,6 +3006,8 @@
         .forEach(function(x){ x.classList.toggle("oculto", vista !== "sku"); });
       document.querySelectorAll(".solo-ventas")
         .forEach(function(x){ x.classList.toggle("oculto", vista !== "ventas"); });
+      document.querySelectorAll(".solo-resumen")
+        .forEach(function(x){ x.classList.toggle("oculto", vista !== "resumen"); });
       // el resumen no se filtra: es la foto completa
       document.getElementById("q").classList.toggle("oculto", vista === "resumen");
       document.getElementById("btnXlsx").classList.toggle("oculto", vista === "resumen");
