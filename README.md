@@ -15,6 +15,21 @@ Tiene **modo claro y oscuro** — arranca según lo que tenga configurado el sis
 de la barra lo cambia y se lo acuerda. Toda la paleta son variables CSS: para retocar colores se
 tocan los bloques `:root` y `[data-tema="oscuro"]` del `<style>`, nada más.
 
+## Cerrar sesión y bloqueo
+
+Son dos cosas distintas, para dos situaciones distintas.
+
+**⏻ Cerrar sesión** borra la clave y la copia local de los datos: en esa computadora no queda
+nada y la próxima persona arranca en la pantalla de clave. Si hay cambios sin guardar avisa antes.
+Es para quien termina y se va.
+
+**Bloqueo por inactividad** a los 20 minutos, para quien se olvidó de cerrarla. Tapa la pantalla
+pero **no toca nada**: al escribir la clave vuelve exactamente donde estaba, con lo editado sin
+guardar intacto. No re-descarga los datos ni pierde trabajo — solo compara la clave contra la que
+se usó para entrar.
+
+El tiempo se cambia en `MINUTOS_BLOQUEO`, dentro de `src/template.html`.
+
 **El repositorio tiene que ser privado.** `netlify/functions/seed.mjs` lleva el catálogo completo
 del cliente. El HTML publicado no lleva datos adentro — se piden al servidor después del login.
 

@@ -24,6 +24,11 @@ botones = re.findall(r'<button[^>]*id="([a-zA-Z0-9]+)"', html)
 huerfanos = [b for b in botones if f'"{b}"' not in js]
 assert not huerfanos, f"botones sin código que los use: {huerfanos}"
 
+# Un bloque de código insertado por el marcador equivocado puede caer dentro del
+# <style>: el CSS lo ignora en silencio y las funciones quedan sin definir.
+css = html[html.index("<style>"):html.index("</style>")]
+assert not re.search(r"function \w+\(|=>", css), "quedó JavaScript dentro del <style>"
+
 # Ningún id usado desde el JS puede faltar en el HTML.
 usados = set(re.findall(r'getElementById\("([a-zA-Z0-9]+)"\)', js))
 faltan = [i for i in usados if f'id="{i}"' not in html]
