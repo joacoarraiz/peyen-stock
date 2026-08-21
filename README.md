@@ -75,6 +75,23 @@ trabajo pendiente:
 Debajo del número va la diferencia (`+4`, `-3`). El filtro **Solo las que hay que actualizar**
 deja las que no coinciden, más las que cambiaron de precio.
 
+### Sobreventa
+
+**Sobreventa es que Mercado Libre ofrezca más unidades de las que existen**, y se mide **por SKU,
+no por publicación**: como el stock es compartido, que una publicación tenga más de lo que le tocó
+en el reparto no es sobreventa mientras el total del SKU cierre. Lo caro es cuando no cierra.
+
+Las publicaciones afectadas llevan **⚠ SOBREVENTA +N** y la fila teñida de rojo, hay una casilla
+**Solo las N con sobreventa** con el contador, y el KPI de arriba las cuenta. En la vista por SKU
+la columna *Cargado en ML* muestra **⚠ N de más**.
+
+Cuando el exceso viene de una **parte de un combo**, el cartel dice cuál: `⚠ SOBREVENTA ·
+TS-30023 +347`. Esa publicación puede tener 2 unidades cargadas y estar igual comprometida,
+porque el líquido de freno que la compone está sobrevendido entre sus 49 publicaciones.
+
+Sobre el catálogo con el stock real del cliente cargado: **267 publicaciones en 187 SKU**.
+`00262 + FD5224` tiene 1 unidad y Mercado Libre ofrece 13.
+
 Las publicaciones **agrupadas no se dividen entre sí**: si el SKU tiene 12 y el grupo es el único
 consumidor, las dos muestran `12`, no 6 y 6.
 
