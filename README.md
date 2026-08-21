@@ -64,14 +64,29 @@ publicación, el combo queda en 0 y sobran 2 unidades de `68501/A` reservadas si
 
 ### Qué hay que actualizar en Mercado Libre
 
-Es lo que se usa después de que el cliente sube su Excel. La vista **por publicación** marca cada
-MLA cuyo stock o precio cambió, con el valor anterior al lado (`stock 12 → 19`), y el filtro
-**Solo las que hay que actualizar** deja nada más que esas: la lista de trabajo.
+La vista **por publicación** tiene dos columnas de stock y la diferencia entre ellas *es* el
+trabajo pendiente:
+
+- **Stock en ML** — lo que hoy tiene cargado la publicación. Viene del export y es lo que se
+  pisa al reimportarlo.
+- **Stock real** — lo que debería tener según el stock físico del SKU. El reparto escribe acá
+  y **nunca pisa el número de ML**, así que los dos se ven al lado.
+
+Debajo del número va la diferencia (`+4`, `-3`). El filtro **Solo las que hay que actualizar**
+deja las que no coinciden, más las que cambiaron de precio.
+
+Las publicaciones **agrupadas no se dividen entre sí**: si el SKU tiene 12 y el grupo es el único
+consumidor, las dos muestran `12`, no 6 y 6.
 
 **Descargar Excel** respeta el filtro, así que con esa lista en pantalla el archivo sale con las
 publicaciones a tocar y nada más, e incluye las columnas *Que cambio* y *Link*.
 
 **Marcar actualizadas** borra las marcas cuando el trabajo ya está hecho en Mercado Libre.
+
+En la vista por SKU la columna **Cargado en ML** es la suma de lo que hoy tienen las
+publicaciones, con **«faltan cargar N»** o **«de más N»** debajo cuando no coincide con el stock
+físico. Un SKU con **físico 0 y cargado 13** significa que en el galpón no queda nada pero Mercado
+Libre sigue ofreciendo 13 unidades.
 
 ### Reimportar ventas no descuenta dos veces
 

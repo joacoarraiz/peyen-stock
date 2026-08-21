@@ -44,12 +44,13 @@ async function abrir(buf) {
 
 /* ---------- 1. escribir y volver a leer ---------- */
 const filas = [
-  ["SKU", "MLA", "Titulo", "Estado", "Precio", "Stock", "Suma al total", "Que cambio", "Link"],
-  ["K-7806", "MLA1493593951", "Kit Pernos Caliper VW Bora Golf", "Activa", 20375, 5, "Si",
+  ["SKU", "MLA", "Titulo", "Estado", "Precio", "Stock en ML", "Stock real", "Diferencia",
+   "Suma al total", "Que cambio", "Link"],
+  ["K-7806", "MLA1493593951", "Kit Pernos Caliper VW Bora Golf", "Activa", 20375, 5, 8, 3, "Si",
    "stock 8 -> 5", "https://articulo.mercadolibre.com.ar/MLA-1493593951-_JM"],
-  ["K-7806", "MLA2068905132", 'Kit "Pernos" & Caliper <Ford> Ecosport', "Inactiva", 0, 0, "No", "", ""],
+  ["K-7806", "MLA2068905132", 'Kit "Pernos" & Caliper <Ford> Ecosport', "Inactiva", 0, 0, "", "", "No", "", ""],
   ["6811 + TS-30023", "MLA2609575884", "Bomba Freno 1'' Pala Michigan + Líquido", "Activa",
-   99900, 12, "Si", "", ""],
+   99900, 12, 12, 0, "Si", "", ""],
 ];
 const bytes = Buffer.from(await api.buildXlsx(filas).arrayBuffer());
 const tmp = join(HERE, "..", "_prueba.xlsx");

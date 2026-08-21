@@ -140,6 +140,10 @@
   tr.skurow td{border-bottom:1px solid var(--line-2)}
   tr.skurow:hover{background:var(--surface-2)}
   .rep{font-weight:700;color:var(--ink);text-align:right}
+  .real{text-align:right;white-space:nowrap;font-weight:700;color:var(--warn)}
+  .real small{display:block;font-size:10px;font-weight:600;color:var(--warn)}
+  .real .ok{color:var(--muted);font-weight:400}
+  .real .hint{font-weight:400}
   .rep small{display:block;font-size:10px;font-weight:600;color:var(--muted)}
   .desc{font-size:11.5px;color:var(--muted)}
 
@@ -628,7 +632,7 @@
       var rows = g.rows.filter(function(r){
         if(est && r.estado !== est) return false;
         if(zero && n(r.stock) + n(r.full) !== 0) return false;
-        if(pend && !(state.rowAt || {})[r.id]) return false;
+        if(pend && !pendiente(r)) return false;
         return true;
       });
       if(q){
@@ -696,6 +700,9 @@
   }
 
   // Reparte el stock declarado de cada SKU entre las publicaciones que lo usan.
+  /* El reparto NO pisa el stock que hoy tiene Mercado Libre: calcula aparte cuánto
+     debería tener cada publicación (r.objetivo). Así se ven los dos números al lado
+     y la diferencia es, literalmente, el trabajo pendiente. */
   function repartir(){
     var c = consumidores(), u = c.universo, uso = c.uso;
 
@@ -706,29 +713,37 @@
       parte[sku] = cant ? Math.floor(total / cant) : 0;
     });
 
-    var hechos = {}, previo = {};
-    state.rows.forEach(function(r){ previo[r.id] = { s: n(r.stock), p: n(r.price) }; });
+    var hechos = {};
     state.rows.forEach(function(r){
-      if(r.estado !== "Activa") return;
+      if(r.estado !== "Activa"){ r.objetivo = 0; return; }
       var ps = partesDe(r.sku, u);
       var v;
       if(ps){
         v = Math.min.apply(null, ps.map(function(p){ return parte[p] || 0; }));
       } else if(parte[r.sku] === undefined){
-        return;                              // SKU sin stock declarado: no se toca
+        delete r.objetivo;                   // SKU sin stock declarado: no hay objetivo
+        return;
       } else {
         v = parte[r.sku];
       }
-      var g = r.sku + "||" + (r.link || r.id);
-      hechos[g] = v;
-      r.stock = v;
+      // las agrupadas comparten mercadería: NO se dividen entre sí, van todas al mismo número
+      hechos[r.sku + "||" + (r.link || r.id)] = v;
+      r.objetivo = v;
     });
-    // las publicaciones agrupadas comparten el número
     state.rows.forEach(function(r){
       var g = r.sku + "||" + (r.link || r.id);
-      if(r.estado === "Activa" && hechos[g] !== undefined) r.stock = hechos[g];
+      if(r.estado === "Activa" && hechos[g] !== undefined) r.objetivo = hechos[g];
     });
-    state.rows.forEach(function(r){ marcarFila(r, previo[r.id].s, previo[r.id].p); });
+  }
+
+  // Publicaciones cuyo número en ML no coincide con lo que debería estar cargado.
+  // Trabajo pendiente en ML: o el stock no coincide, o cambió el precio.
+  function pendiente(r){
+    return desajustada(r) || !!(state.rowAt || {})[r.id];
+  }
+
+  function desajustada(r){
+    return r.objetivo !== undefined && r.estado === "Activa" && n(r.stock) !== n(r.objetivo);
   }
 
   // Lo que hoy está publicado de un SKU base, para comparar contra lo declarado.
@@ -788,6 +803,7 @@
         '<option' + (off ? " selected" : "") + '>Inactiva</option></select></td>' +
       '<td style="text-align:right"><input class="pre" data-f="price" type="number" min="0" step="1" value="' + n(r.price) + '"></td>' +
       '<td style="text-align:right"><input class="stk" data-f="stock" type="number" min="0" value="' + n(r.stock) + '"></td>' +
+      '<td class="real">' + realHTML(r) + "</td>" +
       '<td class="sumcell"><input class="sum" type="checkbox" data-f="cuenta"' +
         (r.cuenta !== false ? " checked" : "") +
         ' title="Destildala si esta publicación repite mercadería ya contada en otra"></td>' +
@@ -818,6 +834,25 @@
 
   function plata(v){
     return "$" + n(v).toLocaleString("es-AR");
+  }
+
+  // Lo que debería estar cargado en esa publicación, y la diferencia contra lo que hay.
+  function realHTML(r){
+    if(r.objetivo === undefined || r.estado !== "Activa") return '<span class="hint">—</span>';
+    var dif = n(r.objetivo) - n(r.stock);
+    if(!dif) return '<span class="ok">' + n(r.objetivo) + "</span>";
+    return '<b>' + n(r.objetivo) + "</b><small>" + (dif > 0 ? "+" : "") + dif + "</small>";
+  }
+
+  function objetivoHTML(rows){
+    var act = rows.filter(function(r){ return r.estado === "Activa" && r.objetivo !== undefined; });
+    if(!act.length) return '<span class="hint">—</span>';
+    var falta = act.filter(desajustada).length;
+    var v = {};
+    act.forEach(function(r){ v[r.sku + "||" + (r.link || r.id)] = n(r.objetivo); });
+    var tot = Object.keys(v).reduce(function(a, k){ return a + v[k]; }, 0);
+    return (falta ? "<b>" : '<span class="ok">') + tot + (falta ? "</b><small>" + falta +
+      (falta === 1 ? " a cambiar" : " a cambiar") + "</small>" : "</span>");
   }
 
   function totalHTML(t){
@@ -872,6 +907,7 @@
         '<td class="hint">Stock del SKU</td>' +
         '<td class="rep" data-precio>' + precioHTML(g.all) + "</td>" +
         '<td class="total' + (t.activo ? "" : " zero") + '" data-total>' + totalHTML(t) + "</td>" +
+        '<td class="real" data-objetivo>' + objetivoHTML(g.all) + "</td>" +
         '<td class="sumcell hint" data-suman>' + sumanHTML(g.all) + "</td>" +
         '<td style="white-space:nowrap;text-align:right">' +
           '<button class="btn btn-line btn-sm" data-act="addRow">+ Publicación</button> ' +
@@ -991,7 +1027,7 @@
     var h = '<table><thead><tr><th>SKU</th><th>Publicaciones que lo usan</th>' +
       '<th style="text-align:right">Precio</th>' +
       '<th style="text-align:right">Stock físico</th>' +
-      '<th style="text-align:right">Repartido</th><th>Último cambio</th></tr></thead><tbody>';
+      '<th style="text-align:right">Cargado en ML</th><th>Último cambio</th></tr></thead><tbody>';
 
     bases.forEach(function(sku){
       var cant = (uso[sku] || []).length, pub = publicadoDe(sku), fis = n(state.sku[sku]);
@@ -1005,7 +1041,8 @@
           precioSku(sku) + '" title="Cambia el precio de todas las publicaciones activas de este SKU"></td>' +
         '<td style="text-align:right"><input class="fis" type="number" min="0" data-sku-stock value="' + fis + '"></td>' +
         '<td class="rep" data-rep>' + pub +
-          (sobra > 0 ? "<small>sobran " + sobra + "</small>" : "") + "</td>" +
+          (sobra !== 0 ? "<small>" + (sobra > 0 ? "faltan cargar " + sobra
+                                                : "de más " + (-sobra)) + "</small>" : "") + "</td>" +
         '<td>' + cambioHTML(sku, fis, cant) + "</td></tr>";
     });
 
@@ -1732,11 +1769,13 @@
     var head = '<table><thead><tr>' +
       "<th>SKU / Publicación</th><th>Título</th><th>Estado</th>" +
       '<th style="text-align:right">Precio</th>' +
-      '<th style="text-align:right">Stock</th><th class="sumcell">Suma</th><th></th></tr></thead>';
+      '<th style="text-align:right">Stock en ML</th>' +
+      '<th style="text-align:right">Stock real</th>' +
+      '<th class="sumcell">Suma</th><th></th></tr></thead>';
     document.getElementById("app").innerHTML = gs.length
       ? head + gs.map(groupHTML).join("") + "</table>"
       : '<div class="empty">No hay resultados con esos filtros.</div>';
-    var pendientes = Object.keys(state.rowAt || {}).length;
+    var pendientes = state.rows.filter(pendiente).length;
     document.getElementById("pendTxt").textContent =
       pendientes ? "Solo las " + pendientes + " que hay que actualizar" : "Solo las que hay que actualizar";
     document.getElementById("btnHecho").classList.toggle("oculto", !pendientes || vista !== "pub");
@@ -2203,6 +2242,8 @@
           revisado: d.revisado || {}, comboManual: d.comboManual || {},
           ventas: d.ventas || [], savedAt: d.savedAt };
         dirty = false;
+        asegurarSku();
+        repartir();          // deja listo el "stock real" de cada publicación
         aviso(false);
         render();
         setState("Guardado para todos · " + stamp());
@@ -2348,8 +2389,8 @@
     ]);
   }
 
-  var COLS = ["SKU", "MLA", "Titulo", "Estado", "Precio", "Stock", "Suma al total",
-              "Que cambio", "Link"];
+  var COLS = ["SKU", "MLA", "Titulo", "Estado", "Precio", "Stock en ML", "Stock real",
+              "Diferencia", "Suma al total", "Que cambio", "Link"];
 
   // Baja lo que estás viendo: con el filtro de pendientes puesto, sale la lista de
   // trabajo justa para ir a actualizar en Mercado Libre.
@@ -2365,7 +2406,9 @@
           if(n(c.dePrecio) !== n(r.price)) t.push("precio " + n(c.dePrecio) + " -> " + n(r.price));
           cambio = t.join(" | ");
         }
-        filas.push([r.sku, r.mla, r.title, r.estado, n(r.price), n(r.stock),
+        var real = r.objetivo === undefined || r.estado !== "Activa" ? "" : n(r.objetivo);
+        filas.push([r.sku, r.mla, r.title, r.estado, n(r.price), n(r.stock), real,
+                    real === "" ? "" : n(r.objetivo) - n(r.stock),
                     r.cuenta !== false ? "Si" : "No", cambio, r.url || ""]);
       });
     });
@@ -3050,8 +3093,9 @@
   // marcar actualizadas: limpia la lista de publicaciones pendientes de tocar en ML
   document.getElementById("btnHecho").addEventListener("click", function(){
     var cuantas = Object.keys(state.rowAt || {}).length;
-    if(!cuantas || !confirm("Se borran las marcas de " + cuantas + " publicaciones. " +
-       "Hacelo cuando ya las actualizaste en Mercado Libre.")) return;
+    if(!cuantas || !confirm("Se borran las marcas de cambio de " + cuantas + " publicaciones. " +
+       "La diferencia entre Stock en ML y Stock real se corrige sola cuando reimportes " +
+       "el export de publicaciones.")) return;
     state.rowAt = {};
     document.getElementById("fPend").checked = false;
     markDirty(); render();
