@@ -92,8 +92,14 @@ porque el líquido de freno que la compone está sobrevendido entre sus 49 publi
 Sobre el catálogo con el stock real del cliente cargado: **267 publicaciones en 187 SKU**.
 `00262 + FD5224` tiene 1 unidad y Mercado Libre ofrece 13.
 
-Las publicaciones **agrupadas no se dividen entre sí**: si el SKU tiene 12 y el grupo es el único
-consumidor, las dos muestran `12`, no 6 y 6.
+Las publicaciones **agrupadas no se dividen entre sí**: si el SKU tiene 4 y el grupo es el único
+consumidor, las dos muestran `4`, no 2 y 2. `SF-100`, con dos publicaciones sincronizadas y 9
+unidades, muestra 9 y 9; `K-7806/S`, con 4 publicaciones de vehículos distintos y 36 unidades,
+reparte 9 a cada una.
+
+En la fila del SKU, **el depósito y el Full no se suman en la misma celda**: el Full va como nota
+(`+2 en Full`). Sumados daban un número —4 sobre dos publicaciones con 2 y 2— que se leía como si
+el stock se hubiera partido entre ellas.
 
 **Descargar Excel** respeta el filtro, así que con esa lista en pantalla el archivo sale con las
 publicaciones a tocar y nada más, e incluye las columnas *Que cambio* y *Link*.

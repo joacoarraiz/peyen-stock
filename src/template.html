@@ -585,22 +585,26 @@
   // El resto (inactivas o agrupadas por ML, que comparten la misma mercadería) queda aparte.
   function suma(r){ return r.cuenta !== false && r.estado === "Activa"; }
 
+  /* El depósito y el Full se cuentan por separado. Sumarlos en la misma celda hacía
+     que la fila del SKU dijera 4 arriba de dos publicaciones con 2 y 2 —2 de depósito
+     más 2 de Full— y se leía como si el 4 se hubiera partido entre las dos, cuando
+     en realidad las agrupadas muestran el mismo número. */
   function skuTotal(rows){
-    var act = 0, pausado = 0, destildado = 0, yaContado = {};
+    var act = 0, full = 0, pausado = 0, destildado = 0, yaContado = {};
     rows.forEach(function(r){
       if(!suma(r)) return;
-      act += n(r.stock) + n(r.full);
+      act += n(r.stock);
+      full += n(r.full);
       if(r.link) yaContado[r.link] = true;
     });
     rows.forEach(function(r){
       // la copia de una publicación agrupada es la misma mercadería: no es stock aparte
       if(suma(r) || (r.link && yaContado[r.link])) return;
-      // separar por motivo: "sin sumar" a secas no explicaba por qué el total daba 0
       if(r.estado !== "Activa") pausado += n(r.stock) + n(r.full);
       else destildado += n(r.stock) + n(r.full);
     });
-    return { activo: act, pausado: pausado, destildado: destildado,
-             fuera: pausado + destildado };
+    return { activo: act, full: full, total: act + full,
+             pausado: pausado, destildado: destildado, fuera: pausado + destildado };
   }
 
   // Dos publicaciones que suman con el mismo número de stock suelen ser la misma
@@ -913,12 +917,11 @@
   }
 
   function totalHTML(t){
-    if(!t.fuera) return String(t.activo);
-    var nota = t.pausado && t.destildado
-      ? t.pausado + " pausadas · " + t.destildado + " sin sumar"
-      : t.pausado ? t.pausado + (t.pausado === 1 ? " pausada" : " pausadas")
-      : t.destildado + " sin sumar";
-    return t.activo + "<small>" + nota + "</small>";
+    var notas = [];
+    if(t.full) notas.push("+" + t.full + " en Full");
+    if(t.pausado) notas.push(t.pausado + (t.pausado === 1 ? " pausada" : " pausadas"));
+    if(t.destildado) notas.push(t.destildado + " sin sumar");
+    return t.activo + (notas.length ? "<small>" + notas.join(" · ") + "</small>" : "");
   }
 
   // Con el grupo cerrado no se ven las casillas, así que el encabezado "Suma"
@@ -963,7 +966,7 @@
         '<td data-chips>' + chipsHTML(g.sku, g.all) + "</td>" +
         '<td class="hint">Stock del SKU</td>' +
         '<td class="rep" data-precio>' + precioHTML(g.all) + "</td>" +
-        '<td class="total' + (t.activo ? "" : " zero") + '" data-total>' + totalHTML(t) + "</td>" +
+        '<td class="total' + (t.total ? "" : " zero") + '" data-total>' + totalHTML(t) + "</td>" +
         '<td class="real" data-objetivo>' + objetivoHTML(g.all) + "</td>" +
         '<td class="sumcell hint" data-suman>' + sumanHTML(g.all) + "</td>" +
         '<td style="white-space:nowrap;text-align:right">' +
@@ -1851,7 +1854,7 @@
   function kpis(){
     var rows = state.rows, gs = bySku(rows);
     var act = rows.filter(function(r){ return r.estado === "Activa"; });
-    var uni = gs.reduce(function(s,g){ return s + skuTotal(g.rows).activo; }, 0);
+    var uni = gs.reduce(function(s,g){ return s + skuTotal(g.rows).total; }, 0);
     set("kSku", gs.length);
     set("kPub", rows.length);
     set("kAct", act.length);
@@ -1871,7 +1874,7 @@
     if(tb){
       var cell = tb.querySelector("[data-total]");
       cell.innerHTML = totalHTML(t);
-      cell.className = "total" + (t.activo ? "" : " zero");
+      cell.className = "total" + (t.total ? "" : " zero");
       tb.querySelector("[data-chips]").innerHTML = chipsHTML(sku, all);
       tb.querySelector("[data-suman]").textContent = sumanHTML(all);
     }
